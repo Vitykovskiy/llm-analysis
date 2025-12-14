@@ -12,6 +12,7 @@
     "build:client": "npm run build --workspace client",
     "dev:server": "npm run start:dev --workspace server",
     "build:server": "npm run build --workspace server",
+    "init:env": "node scripts/init-env.js",
     "test": "echo \"Define workspace-specific tests (client/server)\""
   },
   "keywords": [],
