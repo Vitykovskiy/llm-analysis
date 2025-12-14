@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import TaskCreateDialog from '../components/TaskCreateDialog.vue'
 
 type TaskType = 'epic' | 'task' | 'subtask'
@@ -12,6 +12,8 @@ type Task = {
   status: TaskStatus
   code: string
   createdAt: string
+  parents: { id: number; code: string; title: string }[]
+  children: { id: number; code: string; title: string }[]
 }
 
 const apiBaseUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3000'
@@ -36,22 +38,62 @@ const draggingId = ref<number | null>(null)
 
 const createDialog = ref(false)
 const editDialog = ref(false)
+const relationTypeEdit = ref<'child' | 'parent'>('child')
 const editForm = reactive<{
   id: number | null
   type: TaskType
   title: string
   description: string
   status: TaskStatus
+  parentIds: any[]
+  childIds: any[]
 }>({
   id: null,
   type: 'task',
   title: '',
   description: '',
   status: 'backlog',
+  parentIds: [],
+  childIds: [],
 })
 
 const tasksByStatus = (status: TaskStatus): Task[] =>
   tasks.value.filter((task) => task.status === status)
+
+const taskOptions = computed(() =>
+  tasks.value.map((task) => ({
+    value: task.id,
+    title: `${task.code} — ${task.title}`,
+  })),
+)
+
+const editOptions = computed(() =>
+  taskOptions.value.filter((option) => option.value !== editForm.id),
+)
+
+const relationTargetsEdit = computed({
+  get: () =>
+    relationTypeEdit.value === 'child' ? editForm.childIds : editForm.parentIds,
+  set: (value) => {
+    if (relationTypeEdit.value === 'child') {
+      editForm.childIds = value as any[]
+    } else {
+      editForm.parentIds = value as any[]
+    }
+  },
+})
+
+const normalizeIds = (ids?: unknown[]): number[] =>
+  (ids ?? [])
+    .map((item) => {
+      if (typeof item === 'number') return item
+      if (typeof item === 'object' && item && 'value' in item) {
+        return Number((item as { value: unknown }).value)
+      }
+      return Number(item)
+    })
+    .filter((num) => Number.isFinite(num) && num > 0)
+    .map((num) => Number(num))
 
 const fetchTasks = async (): Promise<void> => {
   loading.value = true
@@ -72,7 +114,14 @@ const fetchTasks = async (): Promise<void> => {
 
 const updateTask = async (
   taskId: number,
-  payload: Partial<{ type: TaskType; title: string; description: string; status: TaskStatus }>,
+  payload: Partial<{
+    type: TaskType
+    title: string
+    description: string
+    status: TaskStatus
+    parentIds: any[]
+    childIds: any[]
+  }>,
 ): Promise<void> => {
   saving.value = true
   error.value = ''
@@ -80,7 +129,11 @@ const updateTask = async (
     const response = await fetch(`${apiBaseUrl}/tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        parentIds: payload.parentIds ? normalizeIds(payload.parentIds) : undefined,
+        childIds: payload.childIds ? normalizeIds(payload.childIds) : undefined,
+      }),
     })
 
     if (!response.ok) {
@@ -107,6 +160,8 @@ const createTask = async (payload: {
   title: string
   description: string
   status: TaskStatus
+  parentIds: any[]
+  childIds: any[]
 }): Promise<void> => {
   if (saving.value) return
 
@@ -116,7 +171,11 @@ const createTask = async (payload: {
     const response = await fetch(`${apiBaseUrl}/tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        parentIds: normalizeIds(payload.parentIds),
+        childIds: normalizeIds(payload.childIds),
+      }),
     })
 
     if (!response.ok) {
@@ -148,6 +207,9 @@ const openEdit = (task: Task): void => {
   editForm.title = task.title
   editForm.description = task.description
   editForm.status = task.status
+  editForm.parentIds = task.parents.map((item) => item.id)
+  editForm.childIds = task.children.map((item) => item.id)
+  relationTypeEdit.value = 'child'
   editDialog.value = true
 }
 
@@ -158,6 +220,8 @@ const saveEdit = async (): Promise<void> => {
     title: editForm.title,
     description: editForm.description.trim(),
     status: editForm.status,
+    parentIds: editForm.parentIds,
+    childIds: editForm.childIds,
   })
   if (!error.value) {
     editDialog.value = false
@@ -271,6 +335,32 @@ onMounted(async () => {
                   <div class="text-body-2 mt-1">{{ task.description }}</div>
                 </v-card-item>
                 <v-divider />
+                <div class="pa-3 d-flex flex-column ga-2">
+                  <div v-if="task.parents.length" class="d-flex align-center ga-2 flex-wrap">
+                    <span class="text-caption text-medium-emphasis">Parents:</span>
+                    <v-chip
+                      v-for="parent in task.parents"
+                      :key="parent.id"
+                      size="x-small"
+                      color="grey-darken-1"
+                      variant="tonal"
+                    >
+                      {{ parent.code }}
+                    </v-chip>
+                  </div>
+                  <div v-if="task.children.length" class="d-flex align-center ga-2 flex-wrap">
+                    <span class="text-caption text-medium-emphasis">Subtasks:</span>
+                    <v-chip
+                      v-for="child in task.children"
+                      :key="child.id"
+                      size="x-small"
+                      color="grey-darken-1"
+                      variant="tonal"
+                    >
+                      {{ child.code }}
+                    </v-chip>
+                  </div>
+                </div>
                 <v-card-actions class="justify-space-between">
                   <v-chip
                     label
@@ -341,6 +431,32 @@ onMounted(async () => {
             density="comfortable"
             variant="outlined"
           />
+          <div class="d-flex flex-wrap ga-3">
+            <v-select
+              v-model="relationTypeEdit"
+              :items="[
+                { title: 'Subtask', value: 'child' },
+                { title: 'Parent', value: 'parent' },
+              ]"
+              label="Link type"
+              density="comfortable"
+              variant="outlined"
+              class="flex-1-1"
+            />
+            <v-combobox
+              v-model="relationTargetsEdit"
+              :items="editOptions"
+              label="Linked tasks"
+              multiple
+              item-title="title"
+              item-value="value"
+              chips
+              clearable
+              variant="outlined"
+              density="comfortable"
+              class="flex-2-1"
+            />
+          </div>
           <v-textarea
             v-model="editForm.description"
             label="Description"
@@ -363,7 +479,12 @@ onMounted(async () => {
         </v-card-actions>
       </v-card>
     </v-dialog>
-    <TaskCreateDialog v-model="createDialog" :loading="saving" @submit="createTask" />
+    <TaskCreateDialog
+      v-model="createDialog"
+      :loading="saving"
+      :task-options="taskOptions"
+      @submit="createTask"
+    />
   </v-container>
 </template>
 

@@ -38,13 +38,44 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS task_links (
+        parent_id INTEGER NOT NULL,
+        child_id INTEGER NOT NULL,
+        PRIMARY KEY (parent_id, child_id)
+      )
+    `);
     await this.run(
       "ALTER TABLE tasks ADD COLUMN title TEXT NOT NULL DEFAULT ''",
     ).catch(() => undefined);
-    await this.run(
-      "ALTER TABLE tasks ADD COLUMN code TEXT UNIQUE NOT NULL DEFAULT ''",
-    ).catch(() => undefined);
+    await this.ensureTaskCodeColumn();
     this.logger.log(`SQLite ready at ${this.dbFile}`);
+  }
+
+  private async ensureTaskCodeColumn(): Promise<void> {
+    const columns = await this.all<{ name: string }>(
+      "PRAGMA table_info('tasks')",
+    );
+    const hasCode = columns.some((col) => col.name === 'code');
+
+    if (!hasCode) {
+      await this.run('ALTER TABLE tasks ADD COLUMN code TEXT');
+
+      const existing = await this.all<{ id: number }>(
+        'SELECT id FROM tasks ORDER BY id ASC',
+      );
+      for (let idx = 0; idx < existing.length; idx += 1) {
+        const code = `TASK-${String(idx + 1).padStart(4, '0')}`;
+        await this.run('UPDATE tasks SET code = ? WHERE id = ?', [
+          code,
+          existing[idx].id,
+        ]);
+      }
+    }
+
+    await this.run(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_code ON tasks(code)',
+    );
   }
 
   private ensureDirectory(): void {
@@ -129,6 +160,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     status: 'backlog' | 'in_progress' | 'done';
     code: string;
     createdAt: string;
+    parents: { id: number; code: string; title: string }[];
+    children: { id: number; code: string; title: string }[];
   }> {
     const next = await this.get<{ next: number }>(
       "SELECT COALESCE(MAX(CAST(substr(code, instr(code, '-') + 1) AS INTEGER)), 0) + 1 as next FROM tasks WHERE code LIKE 'TASK-%'",
@@ -162,6 +195,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       status: row.status,
       code: row.code,
       createdAt: row.created_at,
+      parents: [],
+      children: [],
     };
   }
 
@@ -174,6 +209,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       status: 'backlog' | 'in_progress' | 'done';
       code: string;
       createdAt: string;
+      parents: { id: number; code: string; title: string }[];
+      children: { id: number; code: string; title: string }[];
     }[]
   > {
     const rows = await this.all<{
@@ -186,15 +223,87 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       created_at: string;
     }>('SELECT * FROM tasks ORDER BY created_at DESC');
 
-    return rows.map((row) => ({
-      id: row.id,
-      type: row.type,
-      title: row.title,
-      description: row.description,
-      status: row.status,
-      code: row.code,
-      createdAt: row.created_at,
-    }));
+    const links = await this.all<{ parent_id: number; child_id: number }>(
+      'SELECT parent_id, child_id FROM task_links',
+    );
+
+    const byId = new Map<
+      number,
+      {
+        id: number;
+        type: 'epic' | 'task' | 'subtask';
+        title: string;
+        description: string;
+        status: 'backlog' | 'in_progress' | 'done';
+        code: string;
+        createdAt: string;
+      }
+    >(
+      rows.map((row) => [
+        row.id,
+        {
+          id: row.id,
+          type: row.type,
+          title: row.title,
+          description: row.description,
+          status: row.status,
+          code: row.code,
+          createdAt: row.created_at,
+        },
+      ]),
+    );
+
+    const parentMap = new Map<number, number[]>();
+    const childMap = new Map<number, number[]>();
+
+    links.forEach((link) => {
+      parentMap.set(link.child_id, [
+        ...(parentMap.get(link.child_id) ?? []),
+        link.parent_id,
+      ]);
+      childMap.set(link.parent_id, [
+        ...(childMap.get(link.parent_id) ?? []),
+        link.child_id,
+      ]);
+    });
+
+    const result = rows.map((row) => {
+      const parents =
+        parentMap
+          .get(row.id)
+          ?.map((id) => byId.get(id))
+          .filter(Boolean)
+          .map((entry) => ({
+            id: entry!.id,
+            code: entry!.code,
+            title: entry!.title,
+          })) ?? [];
+
+      const children =
+        childMap
+          .get(row.id)
+          ?.map((id) => byId.get(id))
+          .filter(Boolean)
+          .map((entry) => ({
+            id: entry!.id,
+            code: entry!.code,
+            title: entry!.title,
+          })) ?? [];
+
+      return {
+        id: row.id,
+        type: row.type,
+        title: row.title,
+        description: row.description,
+        status: row.status,
+        code: row.code,
+        createdAt: row.created_at,
+        parents,
+        children,
+      };
+    });
+
+    return result;
   }
 
   async updateTask(
@@ -213,6 +322,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     status: 'backlog' | 'in_progress' | 'done';
     code: string;
     createdAt: string;
+    parents: { id: number; code: string; title: string }[];
+    children: { id: number; code: string; title: string }[];
   }> {
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -263,7 +374,114 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       status: row.status,
       code: row.code,
       createdAt: row.created_at,
+      parents: [],
+      children: [],
     };
+  }
+
+  async setTaskRelations(
+    taskId: number,
+    parents?: number[],
+    children?: number[],
+  ): Promise<void> {
+    if (parents) {
+      await this.run('DELETE FROM task_links WHERE child_id = ?', [taskId]);
+      for (const parentId of parents) {
+        if (parentId === taskId) continue;
+        await this.run(
+          'INSERT OR IGNORE INTO task_links (parent_id, child_id) VALUES (?, ?)',
+          [parentId, taskId],
+        );
+      }
+    }
+
+    if (children) {
+      await this.run('DELETE FROM task_links WHERE parent_id = ?', [taskId]);
+      for (const childId of children) {
+        if (childId === taskId) continue;
+        await this.run(
+          'INSERT OR IGNORE INTO task_links (parent_id, child_id) VALUES (?, ?)',
+          [taskId, childId],
+        );
+      }
+    }
+  }
+
+  async getTaskWithRelations(id: number): Promise<{
+    id: number;
+    type: 'epic' | 'task' | 'subtask';
+    title: string;
+    description: string;
+    status: 'backlog' | 'in_progress' | 'done';
+    code: string;
+    createdAt: string;
+    parents: { id: number; code: string; title: string }[];
+    children: { id: number; code: string; title: string }[];
+  }> {
+    const task = await this.get<{
+      id: number;
+      type: 'epic' | 'task' | 'subtask';
+      title: string;
+      description: string;
+      status: 'backlog' | 'in_progress' | 'done';
+      code: string;
+      created_at: string;
+    }>('SELECT * FROM tasks WHERE id = ?', [id]);
+
+    if (!task) {
+      throw new Error('Task not found');
+    }
+
+    const parents = await this.all<{
+      id: number;
+      code: string;
+      title: string;
+    }>(
+      `
+        SELECT t.id, t.code, t.title
+        FROM tasks t
+        INNER JOIN task_links l ON t.id = l.parent_id
+        WHERE l.child_id = ?
+      `,
+      [id],
+    );
+
+    const children = await this.all<{
+      id: number;
+      code: string;
+      title: string;
+    }>(
+      `
+        SELECT t.id, t.code, t.title
+        FROM tasks t
+        INNER JOIN task_links l ON t.id = l.child_id
+        WHERE l.parent_id = ?
+      `,
+      [id],
+    );
+
+    return {
+      id: task.id,
+      type: task.type,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      code: task.code,
+      createdAt: task.created_at,
+      parents,
+      children,
+    };
+  }
+
+  async getTasksByIds(
+    ids: number[],
+  ): Promise<{ id: number; code: string; title: string }[]> {
+    if (!ids.length) return [];
+    const placeholders = ids.map(() => '?').join(', ');
+    return this.all<{ id: number; code: string; title: string }>(
+      `SELECT id, code, title FROM tasks WHERE id IN (${placeholders})`,
+      ids,
+    );
   }
 
   private run(sql: string, params: unknown[] = []): Promise<void> {

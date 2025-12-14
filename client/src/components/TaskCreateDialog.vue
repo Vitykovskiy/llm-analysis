@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 export type TaskType = 'epic' | 'task' | 'subtask'
 export type TaskStatus = 'backlog' | 'in_progress' | 'done'
@@ -7,18 +7,51 @@ export type TaskStatus = 'backlog' | 'in_progress' | 'done'
 const props = defineProps<{
   modelValue: boolean
   loading?: boolean
+  taskOptions?: { value: number; title: string }[]
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
-  (e: 'submit', payload: { type: TaskType; status: TaskStatus; title: string; description: string }): void
+  (
+    e: 'submit',
+    payload: {
+      type: TaskType
+      status: TaskStatus
+      title: string
+      description: string
+      parentIds: any[]
+      childIds: any[]
+    },
+  ): void
 }>()
 
-const form = reactive<{ type: TaskType; status: TaskStatus; title: string; description: string }>({
+const form = reactive<{
+  type: TaskType
+  status: TaskStatus
+  title: string
+  description: string
+  parentIds: any[]
+  childIds: any[]
+}>({
   type: 'task',
   status: 'backlog',
   title: '',
   description: '',
+  parentIds: [],
+  childIds: [],
+})
+
+const relationType = ref<'child' | 'parent'>('child')
+
+const relationTargets = computed({
+  get: () => (relationType.value === 'child' ? form.childIds : form.parentIds),
+  set: (value) => {
+    if (relationType.value === 'child') {
+      form.childIds = value as any[]
+    } else {
+      form.parentIds = value as any[]
+    }
+  },
 })
 
 const open = computed({
@@ -34,6 +67,9 @@ watch(
       form.status = 'backlog'
       form.title = ''
       form.description = ''
+      form.parentIds = []
+      form.childIds = []
+      relationType.value = 'child'
     }
   },
 )
@@ -47,6 +83,8 @@ const submit = (): void => {
     title,
     status: form.status,
     description,
+    parentIds: form.parentIds,
+    childIds: form.childIds,
   })
 }
 </script>
@@ -85,6 +123,32 @@ const submit = (): void => {
           density="comfortable"
           variant="outlined"
         />
+        <div class="d-flex flex-wrap ga-3">
+          <v-select
+            v-model="relationType"
+            :items="[
+              { title: 'Подзадача', value: 'child' },
+              { title: 'Родитель', value: 'parent' },
+            ]"
+            label="Тип связи"
+            density="comfortable"
+            variant="outlined"
+            class="flex-1-1"
+          />
+          <v-combobox
+            v-model="relationTargets"
+            :items="taskOptions ?? []"
+            label="Задачи"
+            multiple
+            item-title="title"
+            item-value="value"
+            chips
+            clearable
+            variant="outlined"
+            density="comfortable"
+            class="flex-2-1"
+          />
+        </div>
         <v-textarea
           v-model="form.description"
           label="Описание"
@@ -100,7 +164,7 @@ const submit = (): void => {
         <v-btn
           color="primary"
           :loading="loading"
-          :disabled="!form.description.trim()"
+          :disabled="!form.description.trim() || !form.title.trim()"
           @click="submit"
         >
           Создать
@@ -109,3 +173,12 @@ const submit = (): void => {
     </v-card>
   </v-dialog>
 </template>
+
+<style scoped>
+.flex-1-1 {
+  flex: 1 1 180px;
+}
+.flex-2-1 {
+  flex: 2 1 220px;
+}
+</style>

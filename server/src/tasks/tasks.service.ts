@@ -16,6 +16,8 @@ export interface Task {
   status: TaskStatus;
   code: string;
   createdAt: string;
+  parents: { id: number; code: string; title: string }[];
+  children: { id: number; code: string; title: string }[];
 }
 
 const TASK_TYPES: TaskType[] = ['epic', 'task', 'subtask'];
@@ -34,18 +36,31 @@ export class TasksService {
     title?: string;
     description?: string;
     status?: string;
+    parentIds?: unknown;
+    childIds?: unknown;
   }): Promise<Task> {
     const type = this.parseType(payload.type);
     const title = this.parseTitle(payload.title);
     const description = this.parseDescription(payload.description);
     const status = this.parseStatus(payload.status, 'backlog');
+    const parentIds = this.parseIdArray(payload.parentIds);
+    const childIds = this.parseIdArray(payload.childIds);
+    await this.ensureIdsExist([...parentIds, ...childIds]);
 
-    return this.databaseService.createTask({
+    const created = await this.databaseService.createTask({
       type,
       title,
       description,
       status,
     });
+
+    await this.databaseService.setTaskRelations(
+      created.id,
+      parentIds,
+      childIds,
+    );
+
+    return this.databaseService.getTaskWithRelations(created.id);
   }
 
   async update(
@@ -55,6 +70,8 @@ export class TasksService {
       title?: string;
       description?: string;
       status?: string;
+      parentIds?: unknown;
+      childIds?: unknown;
     },
   ): Promise<Task> {
     const updates: Partial<{
@@ -77,12 +94,29 @@ export class TasksService {
       updates.status = this.parseStatus(payload.status);
     }
 
-    if (!Object.keys(updates).length) {
+    if (
+      !Object.keys(updates).length &&
+      payload.parentIds === undefined &&
+      payload.childIds === undefined
+    ) {
       throw new BadRequestException('Nothing to update');
     }
 
+    const parentIds =
+      payload.parentIds !== undefined
+        ? this.parseIdArray(payload.parentIds)
+        : undefined;
+    const childIds =
+      payload.childIds !== undefined
+        ? this.parseIdArray(payload.childIds)
+        : undefined;
+
+    await this.ensureIdsExist([...(parentIds ?? []), ...(childIds ?? [])]);
+
     try {
-      return await this.databaseService.updateTask(id, updates);
+      await this.databaseService.updateTask(id, updates);
+      await this.databaseService.setTaskRelations(id, parentIds, childIds);
+      return await this.databaseService.getTaskWithRelations(id);
     } catch (err) {
       if ((err as Error).message === 'Task not found') {
         throw new NotFoundException(`Task ${id} not found`);
@@ -136,5 +170,29 @@ export class TasksService {
       throw new BadRequestException('Task title is required');
     }
     return value;
+  }
+
+  private parseIdArray(value: unknown): number[] {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) {
+      throw new BadRequestException('Ids must be an array');
+    }
+    const ids = value
+      .map((item) => Number(item))
+      .filter((num) => Number.isFinite(num) && num > 0);
+    return Array.from(new Set(ids));
+  }
+
+  private async ensureIdsExist(ids: number[]): Promise<void> {
+    if (!ids.length) return;
+    const existing = await this.databaseService.getTasksByIds(ids);
+    const missing = ids.filter(
+      (id) => !existing.find((item) => item.id === id),
+    );
+    if (missing.length) {
+      throw new BadRequestException(
+        `Tasks not found for ids: ${missing.join(', ')}`,
+      );
+    }
   }
 }

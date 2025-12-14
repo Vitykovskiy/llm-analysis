@@ -24,8 +24,17 @@ export class TasksController {
     @Body('title') title: string,
     @Body('description') description: string,
     @Body('status') status?: string,
+    @Body('parentIds') parentIds?: unknown,
+    @Body('childIds') childIds?: unknown,
   ): Promise<Task> {
-    return this.tasksService.create({ type, title, description, status });
+    return this.tasksService.create({
+      type,
+      title,
+      description,
+      status,
+      parentIds,
+      childIds,
+    });
   }
 
   @Patch(':id')
@@ -35,12 +44,21 @@ export class TasksController {
     @Body('title') title?: string,
     @Body('description') description?: string,
     @Body('status') status?: string,
+    @Body('parentIds') parentIds?: unknown,
+    @Body('childIds') childIds?: unknown,
   ): Promise<Task> {
     const numericId = Number(id);
     if (!Number.isFinite(numericId) || numericId <= 0) {
       throw new BadRequestException('Task id must be a positive number');
     }
 
-    return this.tasksService.update(numericId, { type, title, description, status });
+    return this.tasksService.update(numericId, {
+      type,
+      title,
+      description,
+      status,
+      parentIds,
+      childIds,
+    });
   }
 }
