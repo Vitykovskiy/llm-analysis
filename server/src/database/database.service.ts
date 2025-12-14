@@ -27,6 +27,15 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL CHECK (type IN ('epic', 'task', 'subtask')),
+        description TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('backlog', 'in_progress', 'done')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
     this.logger.log(`SQLite ready at ${this.dbFile}`);
   }
 
@@ -97,6 +106,127 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         createdAt: row.created_at,
       }))
       .reverse();
+  }
+
+  async createTask(task: {
+    type: 'epic' | 'task' | 'subtask';
+    description: string;
+    status: 'backlog' | 'in_progress' | 'done';
+  }): Promise<{
+    id: number;
+    type: 'epic' | 'task' | 'subtask';
+    description: string;
+    status: 'backlog' | 'in_progress' | 'done';
+    createdAt: string;
+  }> {
+    await this.run(
+      'INSERT INTO tasks (type, description, status) VALUES (?, ?, ?)',
+      [task.type, task.description, task.status],
+    );
+
+    const row = await this.get<{
+      id: number;
+      type: 'epic' | 'task' | 'subtask';
+      description: string;
+      status: 'backlog' | 'in_progress' | 'done';
+      created_at: string;
+    }>('SELECT * FROM tasks WHERE id = last_insert_rowid()');
+
+    if (!row) {
+      throw new Error('Failed to read saved task');
+    }
+
+    return {
+      id: row.id,
+      type: row.type,
+      description: row.description,
+      status: row.status,
+      createdAt: row.created_at,
+    };
+  }
+
+  async listTasks(): Promise<
+    {
+      id: number;
+      type: 'epic' | 'task' | 'subtask';
+      description: string;
+      status: 'backlog' | 'in_progress' | 'done';
+      createdAt: string;
+    }[]
+  > {
+    const rows = await this.all<{
+      id: number;
+      type: 'epic' | 'task' | 'subtask';
+      description: string;
+      status: 'backlog' | 'in_progress' | 'done';
+      created_at: string;
+    }>('SELECT * FROM tasks ORDER BY created_at DESC');
+
+    return rows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      description: row.description,
+      status: row.status,
+      createdAt: row.created_at,
+    }));
+  }
+
+  async updateTask(
+    id: number,
+    updates: Partial<{
+      type: 'epic' | 'task' | 'subtask';
+      description: string;
+      status: 'backlog' | 'in_progress' | 'done';
+    }>,
+  ): Promise<{
+    id: number;
+    type: 'epic' | 'task' | 'subtask';
+    description: string;
+    status: 'backlog' | 'in_progress' | 'done';
+    createdAt: string;
+  }> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+
+    if (updates.type) {
+      sets.push('type = ?');
+      params.push(updates.type);
+    }
+    if (updates.description) {
+      sets.push('description = ?');
+      params.push(updates.description);
+    }
+    if (updates.status) {
+      sets.push('status = ?');
+      params.push(updates.status);
+    }
+
+    if (!sets.length) {
+      throw new Error('No fields to update');
+    }
+
+    params.push(id);
+    await this.run(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ?`, params);
+
+    const row = await this.get<{
+      id: number;
+      type: 'epic' | 'task' | 'subtask';
+      description: string;
+      status: 'backlog' | 'in_progress' | 'done';
+      created_at: string;
+    }>('SELECT * FROM tasks WHERE id = ?', [id]);
+
+    if (!row) {
+      throw new Error('Task not found');
+    }
+
+    return {
+      id: row.id,
+      type: row.type,
+      description: row.description,
+      status: row.status,
+      createdAt: row.created_at,
+    };
   }
 
   private run(sql: string, params: unknown[] = []): Promise<void> {
