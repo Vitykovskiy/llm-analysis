@@ -37,29 +37,66 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async saveMessage(userText: string, botReply: string): Promise<void> {
+  async saveMessage(
+    userText: string,
+    botReply: string,
+  ): Promise<{
+    id: number;
+    userText: string;
+    botReply: string;
+    createdAt: string;
+  }> {
     await this.run(
       'INSERT INTO messages (user_text, bot_reply) VALUES (?, ?)',
       [userText, botReply],
     );
-  }
 
-  async getRecentMessages(
-    limit = 10,
-  ): Promise<{ userText: string; botReply: string; createdAt: string }[]> {
-    const rows = await this.all<{
+    const row = await this.get<{
+      id: number;
       user_text: string;
       bot_reply: string;
       created_at: string;
     }>(
-      'SELECT user_text, bot_reply, created_at FROM messages ORDER BY created_at DESC LIMIT ?',
-      [limit],
+      'SELECT id, user_text, bot_reply, created_at FROM messages WHERE id = last_insert_rowid()',
     );
-    return rows.map((row) => ({
+
+    if (!row) {
+      throw new Error('Failed to read saved message');
+    }
+
+    return {
+      id: row.id,
       userText: row.user_text,
       botReply: row.bot_reply,
       createdAt: row.created_at,
-    }));
+    };
+  }
+
+  async getRecentMessages(limit = 10): Promise<
+    {
+      id: number;
+      userText: string;
+      botReply: string;
+      createdAt: string;
+    }[]
+  > {
+    const rows = await this.all<{
+      id: number;
+      user_text: string;
+      bot_reply: string;
+      created_at: string;
+    }>(
+      'SELECT id, user_text, bot_reply, created_at FROM messages ORDER BY created_at DESC LIMIT ?',
+      [limit],
+    );
+    return rows
+      .map((row) => ({
+        id: row.id,
+        userText: row.user_text,
+        botReply: row.bot_reply,
+        createdAt: row.created_at,
+      }))
+      .reverse();
   }
 
   private run(sql: string, params: unknown[] = []): Promise<void> {
@@ -91,6 +128,23 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           reject(err);
         } else {
           resolve(rows);
+        }
+      });
+    });
+  }
+
+  private get<T>(sql: string, params: unknown[] = []): Promise<T | undefined> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
+      this.db.get<T>(sql, params, (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row as T);
         }
       });
     });
