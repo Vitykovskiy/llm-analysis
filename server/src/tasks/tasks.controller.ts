@@ -21,16 +21,18 @@ export class TasksController {
   @Post()
   create(
     @Body('type') type: string,
+    @Body('title') title: string,
     @Body('description') description: string,
     @Body('status') status?: string,
   ): Promise<Task> {
-    return this.tasksService.create({ type, description, status });
+    return this.tasksService.create({ type, title, description, status });
   }
 
   @Patch(':id')
   update(
     @Param('id') id: string,
     @Body('type') type?: string,
+    @Body('title') title?: string,
     @Body('description') description?: string,
     @Body('status') status?: string,
   ): Promise<Task> {
@@ -39,6 +41,6 @@ export class TasksController {
       throw new BadRequestException('Task id must be a positive number');
     }
 
-    return this.tasksService.update(numericId, { type, description, status });
+    return this.tasksService.update(numericId, { type, title, description, status });
   }
 }

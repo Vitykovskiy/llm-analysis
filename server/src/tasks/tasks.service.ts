@@ -11,8 +11,10 @@ export type TaskStatus = 'backlog' | 'in_progress' | 'done';
 export interface Task {
   id: number;
   type: TaskType;
+  title: string;
   description: string;
   status: TaskStatus;
+  code: string;
   createdAt: string;
 }
 
@@ -29,15 +31,18 @@ export class TasksService {
 
   async create(payload: {
     type?: string;
+    title?: string;
     description?: string;
     status?: string;
   }): Promise<Task> {
     const type = this.parseType(payload.type);
+    const title = this.parseTitle(payload.title);
     const description = this.parseDescription(payload.description);
     const status = this.parseStatus(payload.status, 'backlog');
 
     return this.databaseService.createTask({
       type,
+      title,
       description,
       status,
     });
@@ -47,18 +52,23 @@ export class TasksService {
     id: number,
     payload: {
       type?: string;
+      title?: string;
       description?: string;
       status?: string;
     },
   ): Promise<Task> {
     const updates: Partial<{
       type: TaskType;
+      title: string;
       description: string;
       status: TaskStatus;
     }> = {};
 
     if (payload.type !== undefined) {
       updates.type = this.parseType(payload.type);
+    }
+    if (payload.title !== undefined) {
+      updates.title = this.parseTitle(payload.title);
     }
     if (payload.description !== undefined) {
       updates.description = this.parseDescription(payload.description);
@@ -116,6 +126,14 @@ export class TasksService {
     const value = description?.trim();
     if (!value) {
       throw new BadRequestException('Task description is required');
+    }
+    return value;
+  }
+
+  private parseTitle(title?: string): string {
+    const value = title?.trim();
+    if (!value) {
+      throw new BadRequestException('Task title is required');
     }
     return value;
   }

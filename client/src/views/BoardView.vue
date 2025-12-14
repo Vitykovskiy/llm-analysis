@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import TaskCreateDialog from '../components/TaskCreateDialog.vue'
 
 type TaskType = 'epic' | 'task' | 'subtask'
 type TaskStatus = 'backlog' | 'in_progress' | 'done'
 type Task = {
   id: number
   type: TaskType
+  title: string
   description: string
   status: TaskStatus
+  code: string
   createdAt: string
 }
 
@@ -31,16 +34,18 @@ const saving = ref(false)
 const error = ref('')
 const draggingId = ref<number | null>(null)
 
-const newTask = reactive<{ type: TaskType; description: string; status: TaskStatus }>({
-  type: 'task',
-  description: '',
-  status: 'backlog',
-})
-
+const createDialog = ref(false)
 const editDialog = ref(false)
-const editForm = reactive<{ id: number | null; type: TaskType; description: string; status: TaskStatus }>({
+const editForm = reactive<{
+  id: number | null
+  type: TaskType
+  title: string
+  description: string
+  status: TaskStatus
+}>({
   id: null,
   type: 'task',
+  title: '',
   description: '',
   status: 'backlog',
 })
@@ -65,42 +70,9 @@ const fetchTasks = async (): Promise<void> => {
   }
 }
 
-const createTask = async (): Promise<void> => {
-  const description = newTask.description.trim()
-  if (!description || saving.value) return
-
-  saving.value = true
-  error.value = ''
-  try {
-    const response = await fetch(`${apiBaseUrl}/tasks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: newTask.type,
-        description,
-        status: newTask.status,
-      }),
-    })
-
-    if (!response.ok) {
-      const body = await response.text()
-      throw new Error(body || 'Failed to create task')
-    }
-
-    const created: Task = await response.json()
-    tasks.value = [created, ...tasks.value]
-    newTask.description = ''
-    newTask.status = 'backlog'
-  } catch (err) {
-    error.value = (err as Error).message
-  } finally {
-    saving.value = false
-  }
-}
-
 const updateTask = async (
   taskId: number,
-  payload: Partial<{ type: TaskType; description: string; status: TaskStatus }>,
+  payload: Partial<{ type: TaskType; title: string; description: string; status: TaskStatus }>,
 ): Promise<void> => {
   saving.value = true
   error.value = ''
@@ -130,6 +102,38 @@ const updateTask = async (
   }
 }
 
+const createTask = async (payload: {
+  type: TaskType
+  title: string
+  description: string
+  status: TaskStatus
+}): Promise<void> => {
+  if (saving.value) return
+
+  saving.value = true
+  error.value = ''
+  try {
+    const response = await fetch(`${apiBaseUrl}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(body || 'Failed to create task')
+    }
+
+    const created: Task = await response.json()
+    tasks.value = [created, ...tasks.value]
+    createDialog.value = false
+  } catch (err) {
+    error.value = (err as Error).message
+  } finally {
+    saving.value = false
+  }
+}
+
 const moveTask = async (taskId: number, status: TaskStatus): Promise<void> => {
   const task = tasks.value.find((item) => item.id === taskId)
   if (!task || task.status === status) {
@@ -141,6 +145,7 @@ const moveTask = async (taskId: number, status: TaskStatus): Promise<void> => {
 const openEdit = (task: Task): void => {
   editForm.id = task.id
   editForm.type = task.type
+  editForm.title = task.title
   editForm.description = task.description
   editForm.status = task.status
   editDialog.value = true
@@ -150,6 +155,7 @@ const saveEdit = async (): Promise<void> => {
   if (!editForm.id) return
   await updateTask(editForm.id, {
     type: editForm.type,
+    title: editForm.title,
     description: editForm.description.trim(),
     status: editForm.status,
   })
@@ -182,7 +188,12 @@ onMounted(async () => {
                 Track epics, tasks, and subtasks. Drag cards between columns or edit inline.
               </div>
             </div>
-            <v-btn icon="mdi-refresh" variant="tonal" color="primary" :disabled="loading || saving" @click="fetchTasks" />
+            <div class="d-flex ga-2">
+              <v-btn color="primary" prepend-icon="mdi-plus" :disabled="saving" @click="createDialog = true">
+                New task
+              </v-btn>
+              <v-btn icon="mdi-refresh" variant="tonal" color="primary" :disabled="loading || saving" @click="fetchTasks" />
+            </div>
           </v-card-title>
           <v-divider />
           <v-card-text class="d-flex flex-column ga-4">
@@ -196,56 +207,13 @@ onMounted(async () => {
             >
               {{ error }}
             </v-alert>
-
-            <v-form class="d-flex flex-column ga-4" @submit.prevent="createTask">
-              <div class="d-flex flex-wrap ga-3">
-                <v-select
-                  v-model="newTask.type"
-                  label="Type"
-                  :items="[
-                    { title: 'Epic', value: 'epic' },
-                    { title: 'Task', value: 'task' },
-                    { title: 'Subtask', value: 'subtask' },
-                  ]"
-                  density="comfortable"
-                  variant="outlined"
-                  class="flex-1-1"
-                />
-                <v-select
-                  v-model="newTask.status"
-                  label="Status"
-                  :items="[
-                    { title: 'Backlog', value: 'backlog' },
-                    { title: 'In Progress', value: 'in_progress' },
-                    { title: 'Done', value: 'done' },
-                  ]"
-                  density="comfortable"
-                  variant="outlined"
-                  class="flex-1-1"
-                />
-              </div>
-              <v-textarea
-                v-model="newTask.description"
-                label="Description"
-                placeholder="What needs to be done?"
-                auto-grow
-                variant="outlined"
-                density="comfortable"
-                rows="2"
-              />
-              <div class="d-flex align-center justify-end ga-3">
-                <v-btn type="submit" color="primary" :loading="saving" :disabled="!newTask.description.trim()">
-                  Add to board
-                </v-btn>
-              </div>
-            </v-form>
           </v-card-text>
         </v-card>
       </v-col>
     </v-row>
 
-    <v-row class="ga-4" align="stretch">
-      <v-col v-for="column in statusColumns" :key="column.id" cols="12" md="4">
+    <div class="board-row">
+      <div v-for="column in statusColumns" :key="column.id" class="board-column">
         <v-sheet
           rounded="lg"
           :color="column.tone"
@@ -285,9 +253,12 @@ onMounted(async () => {
               >
                 <v-card-item>
                   <div class="d-flex align-center justify-space-between ga-3">
-                    <v-chip :color="typeColors[task.type]" variant="flat" size="small" class="text-white">
-                      {{ task.type }}
-                    </v-chip>
+                    <div class="d-flex align-center ga-2">
+                      <v-chip :color="typeColors[task.type]" variant="flat" size="small" class="text-white">
+                        {{ task.type }}
+                      </v-chip>
+                      <v-chip color="grey-darken-1" size="small" variant="tonal">{{ task.code }}</v-chip>
+                    </div>
                     <v-btn
                       icon="mdi-pencil"
                       variant="text"
@@ -296,7 +267,8 @@ onMounted(async () => {
                       :disabled="saving"
                     />
                   </div>
-                  <div class="text-body-1 mt-3">{{ task.description }}</div>
+                  <div class="text-body-1 mt-3 font-weight-medium">{{ task.title }}</div>
+                  <div class="text-body-2 mt-1">{{ task.description }}</div>
                 </v-card-item>
                 <v-divider />
                 <v-card-actions class="justify-space-between">
@@ -334,13 +306,19 @@ onMounted(async () => {
             </div>
           </div>
         </v-sheet>
-      </v-col>
-    </v-row>
+      </div>
+    </div>
 
     <v-dialog v-model="editDialog" max-width="520">
       <v-card>
         <v-card-title class="text-h6 font-weight-bold">Edit task</v-card-title>
         <v-card-text class="d-flex flex-column ga-4">
+          <v-text-field
+            v-model="editForm.title"
+            label="Title"
+            variant="outlined"
+            density="comfortable"
+          />
           <v-select
             v-model="editForm.type"
             label="Type"
@@ -374,18 +352,35 @@ onMounted(async () => {
         </v-card-text>
         <v-card-actions class="justify-end ga-2">
           <v-btn variant="text" @click="editDialog = false">Cancel</v-btn>
-          <v-btn color="primary" :loading="saving" :disabled="!editForm.description.trim()" @click="saveEdit">
+          <v-btn
+            color="primary"
+            :loading="saving"
+            :disabled="!editForm.description.trim() || !editForm.title.trim()"
+            @click="saveEdit"
+          >
             Save
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
+    <TaskCreateDialog v-model="createDialog" :loading="saving" @submit="createTask" />
   </v-container>
 </template>
 
 <style scoped>
 .board-card {
   cursor: grab;
+}
+
+.board-row {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.board-column {
+  flex: 0 0 340px;
 }
 
 .drop-zone {
