@@ -4,6 +4,7 @@ import { RunnableSequence } from '@langchain/core/runnables';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import {
   AIMessage,
+  BaseMessage,
   HumanMessage,
   SystemMessage,
   ToolMessage,
@@ -55,7 +56,7 @@ export class LangchainService {
    */
   async generateTaskAwareReply(input: string): Promise<string> {
     const toolModel = this.model.bindTools(this.taskTools);
-    const messages = [
+    const messages: BaseMessage[] = [
       new SystemMessage(
         'You are a task assistant. Use the available tools to list, create, update, or delete tasks when the user asks about work items. Respond concisely.',
       ),
@@ -75,12 +76,13 @@ export class LangchainService {
       }
 
       for (const call of response.tool_calls) {
+        const toolCallId = call.id ?? 'tool-call';
         const tool = this.taskTools.find((item) => item.name === call.name);
         if (!tool) {
           messages.push(
             new ToolMessage({
               content: `Tool ${call.name} is not available`,
-              tool_call_id: call.id,
+              tool_call_id: toolCallId,
             }),
           );
           continue;
@@ -91,14 +93,14 @@ export class LangchainService {
           messages.push(
             new ToolMessage({
               content: result,
-              tool_call_id: call.id,
+              tool_call_id: toolCallId,
             }),
           );
         } catch (err) {
           messages.push(
             new ToolMessage({
               content: `Tool error: ${(err as Error).message}`,
-              tool_call_id: call.id,
+              tool_call_id: toolCallId,
             }),
           );
         }
@@ -118,15 +120,44 @@ export class LangchainService {
     const idArray = z
       .array(z.number().int().positive())
       .describe('List of task ids');
+    const listTasksSchema = z
+      .object({
+        status: statusEnum.optional().describe('Optional status filter'),
+      })
+      .describe('List tasks input') as z.ZodTypeAny;
+    const createTaskSchema = z
+      .object({
+        type: typeEnum,
+        title: z.string().min(1),
+        description: z.string().min(1),
+        status: statusEnum.optional(),
+        parentIds: idArray.optional(),
+        childIds: idArray.optional(),
+      })
+      .describe('Create task input') as z.ZodTypeAny;
+    const updateTaskSchema = z
+      .object({
+        id: z.number().int().positive(),
+        type: typeEnum.optional(),
+        title: z.string().min(1).optional(),
+        description: z.string().min(1).optional(),
+        status: statusEnum.optional(),
+        parentIds: idArray.optional(),
+        childIds: idArray.optional(),
+      })
+      .describe('Update task input') as z.ZodTypeAny;
+    const deleteTaskSchema = z
+      .object({
+        id: z.number().int().positive(),
+      })
+      .describe('Delete task input') as z.ZodTypeAny;
 
-    return [
-      new DynamicStructuredTool({
+    const tools: DynamicStructuredTool[] = [
+      new DynamicStructuredTool<any>({
         name: 'list_tasks',
         description:
           'List tasks with codes, statuses, types, and relations. Use it to understand current work items.',
-        schema: z.object({
-          status: statusEnum.optional().describe('Optional status filter'),
-        }),
+        schema: listTasksSchema,
         func: async ({ status }) => {
           const tasks = await this.tasksService.list();
           const filtered = status
@@ -139,19 +170,12 @@ export class LangchainService {
 
           return filtered.map((task) => this.formatTask(task)).join('\n---\n');
         },
-      }),
-      new DynamicStructuredTool({
+      }) as unknown as DynamicStructuredTool,
+      new DynamicStructuredTool<any>({
         name: 'create_task',
         description:
           'Create a new task or epic with optional parent/child links. Always provide a clear title and description.',
-        schema: z.object({
-          type: typeEnum,
-          title: z.string().min(1),
-          description: z.string().min(1),
-          status: statusEnum.optional(),
-          parentIds: idArray.optional(),
-          childIds: idArray.optional(),
-        }),
+        schema: createTaskSchema,
         func: async ({
           type,
           title,
@@ -170,38 +194,30 @@ export class LangchainService {
           });
           return `Created task:\n${this.formatTask(created)}`;
         },
-      }),
-      new DynamicStructuredTool({
+      }) as unknown as DynamicStructuredTool,
+      new DynamicStructuredTool<any>({
         name: 'update_task',
         description:
           'Update an existing task fields or relations. Provide task id and only fields that should change.',
-        schema: z.object({
-          id: z.number().int().positive(),
-          type: typeEnum.optional(),
-          title: z.string().min(1).optional(),
-          description: z.string().min(1).optional(),
-          status: statusEnum.optional(),
-          parentIds: idArray.optional(),
-          childIds: idArray.optional(),
-        }),
+        schema: updateTaskSchema,
         func: async ({ id, ...payload }) => {
           const updated = await this.tasksService.update(id, payload);
           return `Updated task ${id}:\n${this.formatTask(updated)}`;
         },
-      }),
-      new DynamicStructuredTool({
+      }) as unknown as DynamicStructuredTool,
+      new DynamicStructuredTool<any>({
         name: 'delete_task',
         description:
           'Delete a task by id. Use after confirming the task should be removed from the board.',
-        schema: z.object({
-          id: z.number().int().positive(),
-        }),
+        schema: deleteTaskSchema,
         func: async ({ id }) => {
           await this.tasksService.delete(id);
           return `Deleted task ${id}`;
         },
-      }),
+      }) as unknown as DynamicStructuredTool,
     ];
+
+    return tools;
   }
 
   private formatTask(task: Task): string {

@@ -147,6 +147,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       .reverse();
   }
 
+  async clearMessages(): Promise<void> {
+    await this.run('DELETE FROM messages');
+  }
+
   async createTask(task: {
     type: 'epic' | 'task' | 'subtask';
     title: string;

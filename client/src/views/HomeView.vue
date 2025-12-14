@@ -14,10 +14,15 @@ const messages = ref<ChatMessage[]>([])
 const text = ref('')
 const loading = ref(false)
 const sending = ref(false)
+const clearing = ref(false)
 const error = ref('')
 
 const canSend = computed(
-  () => text.value.trim().length > 0 && !sending.value && !loading.value,
+  () =>
+    text.value.trim().length > 0 &&
+    !sending.value &&
+    !loading.value &&
+    !clearing.value,
 )
 
 const formatDate = (value: string): string => {
@@ -72,6 +77,29 @@ const sendMessage = async (): Promise<void> => {
   }
 }
 
+const clearChat = async (): Promise<void> => {
+  if (clearing.value || loading.value) return
+
+  clearing.value = true
+  error.value = ''
+  try {
+    const response = await fetch(`${apiBaseUrl}/messages`, {
+      method: 'DELETE',
+    })
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(body || 'Не удалось очистить историю чата')
+    }
+
+    messages.value = []
+  } catch (err) {
+    error.value = (err as Error).message
+  } finally {
+    clearing.value = false
+  }
+}
+
 onMounted(async () => {
   await fetchMessages()
 })
@@ -89,13 +117,25 @@ onMounted(async () => {
                 История сообщений сохраняется в базе данных
               </div>
             </div>
-            <v-btn
-              icon="mdi-refresh"
-              variant="tonal"
-              color="primary"
-              :disabled="loading || sending"
-              @click="fetchMessages"
-            />
+            <div class="d-flex ga-2 align-center">
+              <v-btn
+                icon="mdi-refresh"
+                variant="tonal"
+                color="primary"
+                :disabled="loading || sending || clearing"
+                @click="fetchMessages"
+              />
+              <v-btn
+                variant="tonal"
+                color="error"
+                :disabled="loading || sending || clearing"
+                :loading="clearing"
+                prepend-icon="mdi-delete"
+                @click="clearChat"
+              >
+                Очистить чат
+              </v-btn>
+            </div>
           </v-card-title>
 
           <v-divider />
@@ -148,7 +188,7 @@ onMounted(async () => {
                 v-model="text"
                 label="Ваше сообщение"
                 placeholder="Спросите что-нибудь у модели..."
-                :disabled="sending"
+                :disabled="sending || clearing"
                 :loading="sending"
                 rows="2"
                 auto-grow

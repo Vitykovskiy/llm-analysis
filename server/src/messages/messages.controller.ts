@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { MessagesService } from './messages.service';
 import { ChatMessage } from './messages.service';
 
@@ -19,5 +27,11 @@ export class MessagesController {
   @Post()
   sendMessage(@Body('text') text: string): Promise<ChatMessage> {
     return this.messagesService.sendMessage(text);
+  }
+
+  @Delete()
+  @HttpCode(204)
+  clearMessages(): Promise<void> {
+    return this.messagesService.clearMessages();
   }
 }

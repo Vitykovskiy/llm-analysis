@@ -36,4 +36,9 @@ export class MessagesService {
   async listMessages(limit = 20): Promise<ChatMessage[]> {
     return this.databaseService.getRecentMessages(limit);
   }
+
+  async clearMessages(): Promise<void> {
+    await this.databaseService.clearMessages();
+    this.logger.debug('Cleared chat history');
+  }
 }
