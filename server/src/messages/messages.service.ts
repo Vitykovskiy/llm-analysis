@@ -19,13 +19,15 @@ export class MessagesService {
   ) {}
 
   async sendMessage(text: string): Promise<ChatMessage> {
-    const userText = text?.trim();
+    const userText = text ?? '';
+    const trimmed = userText.trim();
 
-    if (!userText) {
+    if (!trimmed) {
       throw new BadRequestException('Message text is required');
     }
 
-    const botReply = await this.langchainService.generateEcho(userText);
+    const botReply =
+      await this.langchainService.generateTaskAwareReply(userText);
     const saved = await this.databaseService.saveMessage(userText, botReply);
     this.logger.debug(`Saved message #${saved.id}`);
     return saved;

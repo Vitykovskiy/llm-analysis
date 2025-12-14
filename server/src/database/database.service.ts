@@ -484,6 +484,23 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  async deleteTask(id: number): Promise<void> {
+    const existing = await this.get<{ id: number }>(
+      'SELECT id FROM tasks WHERE id = ?',
+      [id],
+    );
+
+    if (!existing) {
+      throw new Error('Task not found');
+    }
+
+    await this.run(
+      'DELETE FROM task_links WHERE parent_id = ? OR child_id = ?',
+      [id, id],
+    );
+    await this.run('DELETE FROM tasks WHERE id = ?', [id]);
+  }
+
   private run(sql: string, params: unknown[] = []): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.db) {

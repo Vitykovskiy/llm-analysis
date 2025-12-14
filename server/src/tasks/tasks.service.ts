@@ -125,6 +125,17 @@ export class TasksService {
     }
   }
 
+  async delete(id: number): Promise<void> {
+    try {
+      await this.databaseService.deleteTask(id);
+    } catch (err) {
+      if ((err as Error).message === 'Task not found') {
+        throw new NotFoundException(`Task ${id} not found`);
+      }
+      throw err;
+    }
+  }
+
   private parseType(type?: string): TaskType {
     if (!type) {
       throw new BadRequestException('Task type is required');

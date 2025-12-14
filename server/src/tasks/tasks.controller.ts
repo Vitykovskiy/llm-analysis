@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Delete,
 } from '@nestjs/common';
 import { TasksService, Task } from './tasks.service';
 
@@ -60,5 +61,16 @@ export class TasksController {
       parentIds,
       childIds,
     });
+  }
+
+  @Delete(':id')
+  async delete(@Param('id') id: string): Promise<{ deleted: boolean }> {
+    const numericId = Number(id);
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      throw new BadRequestException('Task id must be a positive number');
+    }
+
+    await this.tasksService.delete(numericId);
+    return { deleted: true };
   }
 }

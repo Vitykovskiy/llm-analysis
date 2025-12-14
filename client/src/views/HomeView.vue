@@ -45,8 +45,8 @@ const fetchMessages = async (): Promise<void> => {
 }
 
 const sendMessage = async (): Promise<void> => {
-  const payload = text.value.trim()
-  if (!payload || sending.value) return
+  const payload = text.value
+  if (!payload.trim() || sending.value) return
 
   sending.value = true
   error.value = ''
@@ -124,13 +124,13 @@ onMounted(async () => {
 
               <div v-for="message in messages" :key="message.id" class="d-flex flex-column ga-2">
                 <div class="text-caption text-medium-emphasis">Вы</div>
-                <v-sheet rounded="lg" color="blue-grey-lighten-5" class="pa-3">
-                  <div class="text-body-1">{{ message.userText }}</div>
+                <v-sheet rounded="lg" color="primary" class="pa-3 text-white" elevation="1">
+                  <div class="text-body-1 message-text">{{ message.userText }}</div>
                 </v-sheet>
 
                 <div class="text-caption text-medium-emphasis mt-2">Модель</div>
-                <v-sheet rounded="lg" color="primary" class="pa-3 text-white" elevation="1">
-                  <div class="text-body-1">{{ message.botReply }}</div>
+                <v-sheet rounded="lg" color="blue-grey-lighten-5" class="pa-3">
+                  <div class="text-body-1 message-text">{{ message.botReply }}</div>
                 </v-sheet>
 
                 <div class="text-caption text-medium-emphasis">
@@ -184,5 +184,9 @@ onMounted(async () => {
   overflow-y: auto;
   padding-right: 4px;
 }
-</style>
 
+.message-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+</style>

@@ -7,5 +7,6 @@ import { DatabaseModule } from '../database/database.module';
   imports: [DatabaseModule],
   controllers: [TasksController],
   providers: [TasksService],
+  exports: [TasksService],
 })
 export class TasksModule {}
