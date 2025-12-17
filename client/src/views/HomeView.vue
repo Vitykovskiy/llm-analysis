@@ -112,10 +112,7 @@ onMounted(async () => {
         <v-card elevation="3">
           <v-card-title class="d-flex align-center justify-space-between flex-wrap ga-4">
             <div>
-              <div class="text-h5 font-weight-bold">Чат с нейросетью</div>
-              <div class="text-body-2 text-medium-emphasis">
-                История сообщений сохраняется в базе данных
-              </div>
+              <div class="text-h5 font-weight-bold">Первичный сбор информации</div>
             </div>
             <div class="d-flex ga-2 align-center">
               <v-btn
@@ -126,15 +123,14 @@ onMounted(async () => {
                 @click="fetchMessages"
               />
               <v-btn
+                icon="mdi-delete"
+                aria-label="Очистить чат"
                 variant="tonal"
                 color="error"
                 :disabled="loading || sending || clearing"
                 :loading="clearing"
-                prepend-icon="mdi-delete"
                 @click="clearChat"
-              >
-                Очистить чат
-              </v-btn>
+              />
             </div>
           </v-card-title>
 
@@ -159,7 +155,7 @@ onMounted(async () => {
 
             <div v-else class="chat-scroll d-flex flex-column ga-5">
               <div v-if="!messages.length" class="text-medium-emphasis text-body-2">
-                Напишите первое сообщение, чтобы начать диалог.
+                Сообщений пока нет.
               </div>
 
               <div v-for="message in messages" :key="message.id" class="d-flex flex-column ga-2">
@@ -196,10 +192,7 @@ onMounted(async () => {
                 color="primary"
                 @keydown.enter.exact.prevent="sendMessage"
               />
-              <div class="d-flex align-center justify-space-between ga-4">
-                <span class="text-caption text-medium-emphasis">
-                  Enter — отправить, Shift+Enter — перенос строки
-                </span>
+              <div class="d-flex align-center justify-end ga-4">
                 <v-btn
                   type="submit"
                   color="primary"

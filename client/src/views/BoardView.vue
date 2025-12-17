@@ -18,16 +18,22 @@ type Task = {
 
 const apiBaseUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3000'
 
-const statusColumns: { id: TaskStatus; title: string; hint: string; tone: string }[] = [
-  { id: 'backlog', title: 'Backlog', hint: 'Ideas waiting to be picked up', tone: 'grey-lighten-4' },
-  { id: 'in_progress', title: 'In Progress', hint: 'Work happening now', tone: 'blue-grey-lighten-5' },
-  { id: 'done', title: 'Done', hint: 'Finished work', tone: 'green-lighten-5' },
+const statusColumns: { id: TaskStatus; title: string; tone: string }[] = [
+  { id: 'backlog', title: 'Запланировано', tone: 'grey-lighten-4' },
+  { id: 'in_progress', title: 'В работе', tone: 'blue-grey-lighten-5' },
+  { id: 'done', title: 'Готово', tone: 'green-lighten-5' },
 ]
 
 const typeColors: Record<TaskType, string> = {
   epic: 'deep-purple-darken-2',
   task: 'blue-darken-1',
   subtask: 'brown-darken-1',
+}
+
+const typeTitles: Record<TaskType, string> = {
+  epic: 'Эпик',
+  task: 'Задача',
+  subtask: 'Подзадача',
 }
 
 const tasks = ref<Task[]>([])
@@ -247,14 +253,11 @@ onMounted(async () => {
         <v-card elevation="3">
           <v-card-title class="d-flex align-center justify-space-between flex-wrap ga-4">
             <div>
-              <div class="text-h5 font-weight-bold">Agile board</div>
-              <div class="text-body-2 text-medium-emphasis">
-                Track epics, tasks, and subtasks. Drag cards between columns or edit inline.
-              </div>
+              <div class="text-h5 font-weight-bold">Доска задач</div>
             </div>
             <div class="d-flex ga-2">
               <v-btn color="primary" prepend-icon="mdi-plus" :disabled="saving" @click="createDialog = true">
-                New task
+                Новая задача
               </v-btn>
               <v-btn icon="mdi-refresh" variant="tonal" color="primary" :disabled="loading || saving" @click="fetchTasks" />
             </div>
@@ -289,7 +292,6 @@ onMounted(async () => {
           <div class="d-flex align-center justify-space-between">
             <div>
               <div class="text-subtitle-1 font-weight-bold">{{ column.title }}</div>
-              <div class="text-caption text-medium-emphasis">{{ column.hint }}</div>
             </div>
             <v-chip color="primary" variant="flat" size="small">
               {{ tasksByStatus(column.id).length }}
@@ -319,7 +321,7 @@ onMounted(async () => {
                   <div class="d-flex align-center justify-space-between ga-3">
                     <div class="d-flex align-center ga-2">
                       <v-chip :color="typeColors[task.type]" variant="flat" size="small" class="text-white">
-                        {{ task.type }}
+                        {{ typeTitles[task.type] }}
                       </v-chip>
                       <v-chip color="grey-darken-1" size="small" variant="tonal">{{ task.code }}</v-chip>
                     </div>
@@ -337,7 +339,7 @@ onMounted(async () => {
                 <v-divider />
                 <div class="pa-3 d-flex flex-column ga-2">
                   <div v-if="task.parents.length" class="d-flex align-center ga-2 flex-wrap">
-                    <span class="text-caption text-medium-emphasis">Parents:</span>
+                    <span class="text-caption text-medium-emphasis">Родители:</span>
                     <v-chip
                       v-for="parent in task.parents"
                       :key="parent.id"
@@ -349,7 +351,7 @@ onMounted(async () => {
                     </v-chip>
                   </div>
                   <div v-if="task.children.length" class="d-flex align-center ga-2 flex-wrap">
-                    <span class="text-caption text-medium-emphasis">Subtasks:</span>
+                    <span class="text-caption text-medium-emphasis">Подзадачи:</span>
                     <v-chip
                       v-for="child in task.children"
                       :key="child.id"
@@ -392,7 +394,7 @@ onMounted(async () => {
             </div>
 
             <div v-if="!loading && tasksByStatus(column.id).length === 0" class="empty-column text-medium-emphasis">
-              No tasks here yet.
+              Здесь пока нет задач.
             </div>
           </div>
         </v-sheet>
@@ -401,32 +403,32 @@ onMounted(async () => {
 
     <v-dialog v-model="editDialog" max-width="520">
       <v-card>
-        <v-card-title class="text-h6 font-weight-bold">Edit task</v-card-title>
+        <v-card-title class="text-h6 font-weight-bold">Редактирование задачи</v-card-title>
         <v-card-text class="d-flex flex-column ga-4">
           <v-text-field
             v-model="editForm.title"
-            label="Title"
+            label="Название"
             variant="outlined"
             density="comfortable"
           />
           <v-select
             v-model="editForm.type"
-            label="Type"
+            label="Тип"
             :items="[
-              { title: 'Epic', value: 'epic' },
-              { title: 'Task', value: 'task' },
-              { title: 'Subtask', value: 'subtask' },
+              { title: 'Эпик', value: 'epic' },
+              { title: 'Задача', value: 'task' },
+              { title: 'Подзадача', value: 'subtask' },
             ]"
             density="comfortable"
             variant="outlined"
           />
           <v-select
             v-model="editForm.status"
-            label="Status"
+            label="Статус"
             :items="[
-              { title: 'Backlog', value: 'backlog' },
-              { title: 'In Progress', value: 'in_progress' },
-              { title: 'Done', value: 'done' },
+              { title: 'Запланировано', value: 'backlog' },
+              { title: 'В работе', value: 'in_progress' },
+              { title: 'Готово', value: 'done' },
             ]"
             density="comfortable"
             variant="outlined"
@@ -435,10 +437,10 @@ onMounted(async () => {
             <v-select
               v-model="relationTypeEdit"
               :items="[
-                { title: 'Subtask', value: 'child' },
-                { title: 'Parent', value: 'parent' },
+                { title: 'Подзадача', value: 'child' },
+                { title: 'Родитель', value: 'parent' },
               ]"
-              label="Link type"
+              label="Тип связи"
               density="comfortable"
               variant="outlined"
               class="flex-1-1"
@@ -446,7 +448,7 @@ onMounted(async () => {
             <v-combobox
               v-model="relationTargetsEdit"
               :items="editOptions"
-              label="Linked tasks"
+              label="Связанные задачи"
               multiple
               item-title="title"
               item-value="value"
@@ -459,7 +461,7 @@ onMounted(async () => {
           </div>
           <v-textarea
             v-model="editForm.description"
-            label="Description"
+            label="Описание"
             rows="3"
             auto-grow
             variant="outlined"
@@ -467,14 +469,14 @@ onMounted(async () => {
           />
         </v-card-text>
         <v-card-actions class="justify-end ga-2">
-          <v-btn variant="text" @click="editDialog = false">Cancel</v-btn>
+          <v-btn variant="text" @click="editDialog = false">Отмена</v-btn>
           <v-btn
             color="primary"
             :loading="saving"
             :disabled="!editForm.description.trim() || !editForm.title.trim()"
             @click="saveEdit"
           >
-            Save
+            Сохранить
           </v-btn>
         </v-card-actions>
       </v-card>
