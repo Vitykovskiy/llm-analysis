@@ -8,11 +8,21 @@ import {
   Query,
 } from '@nestjs/common';
 import { MessagesService } from './messages.service';
-import { ChatMessage } from './messages.service';
+import { ChatMessage, SimilarEntry } from './messages.service';
 
 @Controller('messages')
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
+
+  @Get('similar')
+  getSimilar(
+    @Query('query') query: string,
+    @Query('limit') limit?: string,
+  ): Promise<SimilarEntry[]> {
+    const parsedLimit = Number(limit);
+    const safeLimit = Number.isFinite(parsedLimit) ? parsedLimit : 3;
+    return this.messagesService.searchSimilar(query, safeLimit);
+  }
 
   @Get()
   getMessages(@Query('limit') limit?: string): Promise<ChatMessage[]> {
