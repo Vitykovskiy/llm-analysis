@@ -13,6 +13,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { Task, TasksService } from '../tasks/tasks.service';
+import { DatabaseService } from '../database/database.service';
 
 @Injectable()
 export class LangchainService {
@@ -24,7 +25,10 @@ export class LangchainService {
 
   private readonly taskTools: DynamicStructuredTool[];
 
-  constructor(private readonly tasksService: TasksService) {
+  constructor(
+    private readonly tasksService: TasksService,
+    private readonly databaseService: DatabaseService,
+  ) {
     const apiKey = process.env.LLM_API_TOKEN;
     if (!apiKey) {
       throw new Error('LLM_API_TOKEN is not set');
@@ -57,9 +61,9 @@ export class LangchainService {
   async generateTaskAwareReply(input: string): Promise<string> {
     const toolModel = this.model.bindTools(this.taskTools);
     const messages: BaseMessage[] = [
-      new SystemMessage(`Ты — LLM-агент, выполняющий функцию сбора и уточнения требований к автоматизации.
+      new SystemMessage(`Ты - LLM-агент, выполняющий функцию сбора и уточнения требований к автоматизации.
 
-Твоя единственная задача — пошагово собирать информацию от пользователя.
+Твоя единственная задача - пошагово собирать информацию от пользователя.
 Ты НЕ формируешь решения, требования, диаграммы, выводы или рекомендации.
 Ты НЕ объясняешь пользователю, что и зачем будет сделано.
 
@@ -76,7 +80,7 @@ export class LangchainService {
 — после каждого ответа пользователя извлекай факты;
 — сохраняй извлечённую информацию во внутреннее хранилище;
 — структурируй данные по категориям (процесс, роли, данные, события, проблемы, ограничения);
-— информация должна быть пригодна для последующего векторного поиска.
+- информация должна быть пригодна для последующего векторного поиска.
 
 Стиль общения:
 — нейтральный, деловой;
@@ -92,10 +96,11 @@ export class LangchainService {
 6. Ограничения и допущения.
 7. Критерии завершённости процесса (когда считается, что всё выполнено).
 
-Если пользователь уходит в рассуждения — мягко возвращай его к фактам.
+Если пользователь уходит в рассуждения - мягко возвращай его к фактам.
 `),
-      new HumanMessage(input),
     ];
+    const history = await this.loadRecentHistory();
+    messages.push(...history, new HumanMessage(input));
 
     for (let step = 0; step < 6; step += 1) {
       const response = (await toolModel.invoke(messages)) as AIMessage;
@@ -275,5 +280,22 @@ export class LangchainService {
     }
 
     return lines.join('\n');
+  }
+
+  private async loadRecentHistory(): Promise<BaseMessage[]> {
+    try {
+      const recent = await this.databaseService.getRecentMessages(10);
+      const history: BaseMessage[] = [];
+      recent.forEach((item) => {
+        history.push(new HumanMessage(item.userText));
+        history.push(new AIMessage(item.botReply));
+      });
+      return history;
+    } catch (err) {
+      this.logger.warn(
+        `Could not load recent messages for context: ${(err as Error).message}`,
+      );
+      return [];
+    }
   }
 }
