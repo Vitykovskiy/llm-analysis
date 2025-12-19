@@ -14,6 +14,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { Task, TasksService } from '../tasks/tasks.service';
 import { DatabaseService } from '../database/database.service';
+import { VectorStoreService } from './vector-store.service';
 
 @Injectable()
 export class LangchainService {
@@ -28,6 +29,7 @@ export class LangchainService {
   constructor(
     private readonly tasksService: TasksService,
     private readonly databaseService: DatabaseService,
+    private readonly vectorStoreService: VectorStoreService,
   ) {
     const apiKey = process.env.LLM_API_TOKEN;
     if (!apiKey) {
@@ -36,7 +38,7 @@ export class LangchainService {
 
     this.model = new ChatOpenAI({
       apiKey,
-      model: process.env.LLM_MODEL ?? 'gpt-5.2-2025-12-11',
+      model: process.env.LLM_MODEL ?? 'gpt-4.1',
       temperature: 0.2,
     });
 
@@ -159,6 +161,40 @@ export class LangchainService {
     const idArray = z
       .array(z.number().int().positive())
       .describe('List of task ids');
+    const vectorMetadata = z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe('Optional metadata object');
+    const addVectorSchema = z
+      .object({
+        content: z.string().min(1),
+        metadata: vectorMetadata,
+        id: z.string().min(1).optional(),
+      })
+      .describe('Add a document to the vector store') as z.ZodTypeAny;
+    const searchVectorSchema = z
+      .object({
+        query: z.string().min(1),
+        limit: z.number().int().min(1).max(10).optional(),
+      })
+      .describe('Search similar documents') as z.ZodTypeAny;
+    const getVectorSchema = z
+      .object({
+        id: z.string().min(1),
+      })
+      .describe('Get a document by id') as z.ZodTypeAny;
+    const updateVectorSchema = z
+      .object({
+        id: z.string().min(1),
+        content: z.string().min(1).optional(),
+        metadata: vectorMetadata,
+      })
+      .describe('Update a document content and/or metadata') as z.ZodTypeAny;
+    const deleteVectorSchema = z
+      .object({
+        id: z.string().min(1),
+      })
+      .describe('Delete a document by id') as z.ZodTypeAny;
     const listTasksSchema = z
       .object({
         status: statusEnum.optional().describe('Optional status filter'),
@@ -252,6 +288,67 @@ export class LangchainService {
         func: async ({ id }) => {
           await this.tasksService.delete(id);
           return `Deleted task ${id}`;
+        },
+      }) as unknown as DynamicStructuredTool,
+      new DynamicStructuredTool<any>({
+        name: 'vector_add_document',
+        description:
+          'Add a document to Chroma vector store. Include content and optional metadata/id.',
+        schema: addVectorSchema,
+        func: async ({ content, metadata, id }) => {
+          const result = await this.vectorStoreService.addDocument({
+            content,
+            metadata,
+            id,
+          });
+          return `Added vector document with id ${result.id}`;
+        },
+      }) as unknown as DynamicStructuredTool,
+      new DynamicStructuredTool<any>({
+        name: 'vector_search',
+        description:
+          'Search similar documents in the vector store. Provide query text and optional limit (1-10).',
+        schema: searchVectorSchema,
+        func: async ({ query, limit }) => {
+          const results = await this.vectorStoreService.similaritySearch(
+            query,
+            limit ?? 3,
+          );
+          if (!results.length) return 'No similar documents found.';
+          return JSON.stringify(results, null, 2);
+        },
+      }) as unknown as DynamicStructuredTool,
+      new DynamicStructuredTool<any>({
+        name: 'vector_get',
+        description: 'Fetch a vector document by id.',
+        schema: getVectorSchema,
+        func: async ({ id }) => {
+          const doc = await this.vectorStoreService.getDocument(id);
+          if (!doc) return `Document ${id} not found.`;
+          return JSON.stringify(doc, null, 2);
+        },
+      }) as unknown as DynamicStructuredTool,
+      new DynamicStructuredTool<any>({
+        name: 'vector_update',
+        description:
+          'Update vector document content and/or metadata. Provide id and fields to change.',
+        schema: updateVectorSchema,
+        func: async ({ id, content, metadata }) => {
+          const result = await this.vectorStoreService.updateDocument({
+            id,
+            content,
+            metadata,
+          });
+          return `Updated vector document ${result.id}`;
+        },
+      }) as unknown as DynamicStructuredTool,
+      new DynamicStructuredTool<any>({
+        name: 'vector_delete',
+        description: 'Delete a vector document by id.',
+        schema: deleteVectorSchema,
+        func: async ({ id }) => {
+          await this.vectorStoreService.deleteDocument(id);
+          return `Deleted vector document ${id}`;
         },
       }) as unknown as DynamicStructuredTool,
     ];

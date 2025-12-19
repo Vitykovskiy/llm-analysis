@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Document } from '@langchain/core/documents';
 import { Chroma } from '@langchain/community/vectorstores/chroma';
 import { OpenAIEmbeddings } from '@langchain/openai';
@@ -75,10 +76,105 @@ export class VectorStoreService {
     }
   }
 
-  async similaritySearch(
-    query: string,
-    limit = 3,
-  ): Promise<SearchResult[]> {
+  async addDocument(input: {
+    content: string;
+    metadata?: Record<string, unknown>;
+    id?: string;
+  }): Promise<{ id: string }> {
+    if (!this.isEnabled()) throw new Error('Chroma is not configured');
+
+    const trimmed = input.content?.trim();
+    if (!trimmed) {
+      throw new Error('Content is required');
+    }
+
+    const id = input.id?.toString() ?? randomUUID();
+    const doc = new Document({
+      pageContent: trimmed,
+      metadata: input.metadata ?? {},
+    });
+
+    const store = await this.getStore();
+    await store.addDocuments([doc], [id]);
+    return { id };
+  }
+
+  async updateDocument(input: {
+    id: string;
+    content?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ id: string }> {
+    if (!this.isEnabled()) throw new Error('Chroma is not configured');
+    const id = input.id?.toString();
+    if (!id) throw new Error('Document id is required');
+    if (!input.content && !input.metadata) {
+      throw new Error('Provide content or metadata to update');
+    }
+
+    const store = await this.getStore();
+    const collection = (store as any).collection;
+    if (!collection?.get) {
+      throw new Error('Chroma collection handle is unavailable');
+    }
+
+    const existing = await collection.get({
+      ids: [id],
+      include: ['documents', 'metadatas'],
+    });
+
+    if (!existing?.ids?.length) {
+      throw new Error(`Document ${id} not found`);
+    }
+
+    const currentContent = existing.documents?.[0] as string | undefined;
+    const currentMetadata =
+      (existing.metadatas?.[0] as Record<string, unknown> | undefined) ?? {};
+
+    const newContent = input.content?.trim() || currentContent || '';
+    if (!newContent) {
+      throw new Error('Updated content cannot be empty');
+    }
+
+    const newMetadata = input.metadata
+      ? { ...currentMetadata, ...input.metadata }
+      : currentMetadata;
+
+    if (!collection.update) {
+      // Fallback: delete then add
+      await collection.delete({ ids: [id] });
+      await collection.add({
+        ids: [id],
+        documents: [newContent],
+        metadatas: [newMetadata],
+      });
+      return { id };
+    }
+
+    await collection.update({
+      ids: [id],
+      documents: [newContent],
+      metadatas: [newMetadata],
+    });
+
+    return { id };
+  }
+
+  async deleteDocument(id: string): Promise<{ deleted: boolean }> {
+    if (!this.isEnabled()) throw new Error('Chroma is not configured');
+    const safeId = id?.toString();
+    if (!safeId) throw new Error('Document id is required');
+
+    const store = await this.getStore();
+    const collection = (store as any).collection;
+    if (!collection?.delete) {
+      throw new Error('Chroma collection handle is unavailable');
+    }
+
+    await collection.delete({ ids: [safeId] });
+    return { deleted: true };
+  }
+
+  async similaritySearch(query: string, limit = 3): Promise<SearchResult[]> {
     if (!this.isEnabled()) return [];
     const trimmed = query.trim();
     if (!trimmed) return [];
@@ -101,6 +197,32 @@ export class VectorStoreService {
       this.resetStore();
       return [];
     }
+  }
+
+  async getDocument(id: string): Promise<SearchResult | null> {
+    if (!this.isEnabled()) throw new Error('Chroma is not configured');
+    const safeId = id?.toString();
+    if (!safeId) throw new Error('Document id is required');
+
+    const store = await this.getStore();
+    const collection = (store as any).collection;
+    if (!collection?.get) {
+      throw new Error('Chroma collection handle is unavailable');
+    }
+
+    const found = await collection.get({
+      ids: [safeId],
+      include: ['documents', 'metadatas', 'distances'],
+    });
+
+    if (!found?.ids?.length) return null;
+
+    return {
+      content: (found.documents?.[0] as string | undefined) ?? '',
+      metadata:
+        (found.metadatas?.[0] as Record<string, unknown> | undefined) ?? {},
+      score: (found.distances?.[0] as number | undefined) ?? 0,
+    };
   }
 
   private isEnabled(): boolean {

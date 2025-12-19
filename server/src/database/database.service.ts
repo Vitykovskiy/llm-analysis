@@ -550,7 +550,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         if (err) {
           reject(err);
         } else {
-          resolve(row as T);
+          resolve(row);
         }
       });
     });
