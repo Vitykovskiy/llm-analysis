@@ -9,6 +9,12 @@ import {
 import { Database, verbose } from 'sqlite3';
 
 const sqlite3 = verbose();
+type DbTaskStatus =
+  | 'Open'
+  | 'Drafted'
+  | 'RequiresClarification'
+  | 'Ready'
+  | 'Done';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
@@ -33,7 +39,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         type TEXT NOT NULL CHECK (type IN ('epic', 'task', 'subtask')),
         title TEXT NOT NULL,
         description TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('backlog', 'in_progress', 'done')),
+        status TEXT NOT NULL CHECK (status IN ('Open', 'Drafted', 'RequiresClarification', 'Ready', 'Done')),
         code TEXT UNIQUE NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -48,6 +54,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     await this.run(
       "ALTER TABLE tasks ADD COLUMN title TEXT NOT NULL DEFAULT ''",
     ).catch(() => undefined);
+    await this.ensureTaskStatusConstraint();
     await this.ensureTaskCodeColumn();
     this.logger.log(`SQLite ready at ${this.dbFile}`);
   }
@@ -83,6 +90,63 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
+  }
+
+  private async ensureTaskStatusConstraint(): Promise<void> {
+    const row = await this.get<{ sql: string }>(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'",
+    );
+    const expectedCheck =
+      "status IN ('Open', 'Drafted', 'RequiresClarification', 'Ready', 'Done')";
+
+    if (row?.sql?.includes(expectedCheck)) {
+      return;
+    }
+
+    this.logger.warn(
+      'Migrating tasks table to new status set (Open, Drafted, RequiresClarification, Ready, Done)',
+    );
+
+    await this.run('PRAGMA foreign_keys=off');
+    await this.run('ALTER TABLE tasks RENAME TO tasks_old');
+    await this.run(`
+      CREATE TABLE tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL CHECK (type IN ('epic', 'task', 'subtask')),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (${expectedCheck}),
+        code TEXT UNIQUE NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await this.run(`
+      INSERT INTO tasks (id, type, title, description, status, code, created_at)
+      SELECT
+        id,
+        type,
+        title,
+        description,
+        CASE status
+          WHEN 'backlog' THEN 'Open'
+          WHEN 'in_progress' THEN 'Drafted'
+          WHEN 'done' THEN 'Done'
+          WHEN 'Open' THEN 'Open'
+          WHEN 'Drafted' THEN 'Drafted'
+          WHEN 'RequiresClarification' THEN 'RequiresClarification'
+          WHEN 'Ready' THEN 'Ready'
+          WHEN 'Done' THEN 'Done'
+          ELSE 'Open'
+        END as status,
+        code,
+        created_at
+      FROM tasks_old
+    `);
+    await this.run('DROP TABLE tasks_old');
+    await this.run('PRAGMA foreign_keys=on');
+    await this.run(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_code ON tasks(code)',
+    );
   }
 
   async saveMessage(
@@ -155,13 +219,13 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     type: 'epic' | 'task' | 'subtask';
     title: string;
     description: string;
-    status: 'backlog' | 'in_progress' | 'done';
+    status: DbTaskStatus;
   }): Promise<{
     id: number;
     type: 'epic' | 'task' | 'subtask';
     title: string;
     description: string;
-    status: 'backlog' | 'in_progress' | 'done';
+    status: DbTaskStatus;
     code: string;
     createdAt: string;
     parents: { id: number; code: string; title: string }[];
@@ -182,7 +246,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       type: 'epic' | 'task' | 'subtask';
       title: string;
       description: string;
-      status: 'backlog' | 'in_progress' | 'done';
+      status: DbTaskStatus;
       code: string;
       created_at: string;
     }>('SELECT * FROM tasks WHERE id = last_insert_rowid()');
@@ -210,7 +274,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       type: 'epic' | 'task' | 'subtask';
       title: string;
       description: string;
-      status: 'backlog' | 'in_progress' | 'done';
+      status: DbTaskStatus;
       code: string;
       createdAt: string;
       parents: { id: number; code: string; title: string }[];
@@ -222,7 +286,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       type: 'epic' | 'task' | 'subtask';
       title: string;
       description: string;
-      status: 'backlog' | 'in_progress' | 'done';
+      status: DbTaskStatus;
       code: string;
       created_at: string;
     }>('SELECT * FROM tasks ORDER BY created_at DESC');
@@ -238,7 +302,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         type: 'epic' | 'task' | 'subtask';
         title: string;
         description: string;
-        status: 'backlog' | 'in_progress' | 'done';
+        status: DbTaskStatus;
         code: string;
         createdAt: string;
       }
@@ -316,14 +380,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       type: 'epic' | 'task' | 'subtask';
       title: string;
       description: string;
-      status: 'backlog' | 'in_progress' | 'done';
+      status: DbTaskStatus;
     }>,
   ): Promise<{
     id: number;
     type: 'epic' | 'task' | 'subtask';
     title: string;
     description: string;
-    status: 'backlog' | 'in_progress' | 'done';
+    status: DbTaskStatus;
     code: string;
     createdAt: string;
     parents: { id: number; code: string; title: string }[];
@@ -361,7 +425,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       type: 'epic' | 'task' | 'subtask';
       title: string;
       description: string;
-      status: 'backlog' | 'in_progress' | 'done';
+      status: DbTaskStatus;
       code: string;
       created_at: string;
     }>('SELECT * FROM tasks WHERE id = ?', [id]);
@@ -416,7 +480,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     type: 'epic' | 'task' | 'subtask';
     title: string;
     description: string;
-    status: 'backlog' | 'in_progress' | 'done';
+    status: DbTaskStatus;
     code: string;
     createdAt: string;
     parents: { id: number; code: string; title: string }[];
@@ -427,7 +491,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       type: 'epic' | 'task' | 'subtask';
       title: string;
       description: string;
-      status: 'backlog' | 'in_progress' | 'done';
+      status: DbTaskStatus;
       code: string;
       created_at: string;
     }>('SELECT * FROM tasks WHERE id = ?', [id]);

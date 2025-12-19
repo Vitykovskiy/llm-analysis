@@ -156,7 +156,13 @@ export class LangchainService {
   }
 
   private buildTaskTools(): DynamicStructuredTool[] {
-    const statusEnum = z.enum(['backlog', 'in_progress', 'done']);
+    const statusEnum = z.enum([
+      'Open',
+      'Drafted',
+      'RequiresClarification',
+      'Ready',
+      'Done',
+    ]);
     const typeEnum = z.enum(['epic', 'task', 'subtask']);
     const idArray = z
       .array(z.number().int().positive())

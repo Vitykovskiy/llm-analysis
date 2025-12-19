@@ -2,7 +2,12 @@
 import { computed, reactive, ref, watch } from 'vue'
 
 export type TaskType = 'epic' | 'task' | 'subtask'
-export type TaskStatus = 'backlog' | 'in_progress' | 'done'
+export type TaskStatus =
+  | 'Open'
+  | 'Drafted'
+  | 'RequiresClarification'
+  | 'Ready'
+  | 'Done'
 
 const props = defineProps<{
   modelValue: boolean
@@ -34,7 +39,7 @@ const form = reactive<{
   childIds: any[]
 }>({
   type: 'task',
-  status: 'backlog',
+  status: 'Open',
   title: '',
   description: '',
   parentIds: [],
@@ -64,7 +69,7 @@ watch(
   (isOpen) => {
     if (isOpen) {
       form.type = 'task'
-      form.status = 'backlog'
+      form.status = 'Open'
       form.title = ''
       form.description = ''
       form.parentIds = []
@@ -97,7 +102,7 @@ const submit = (): void => {
         <v-text-field
           v-model="form.title"
           label="Название"
-          placeholder="Коротко сформулируйте задачу"
+          placeholder="Например: собрать требования, уточнить цели"
           variant="outlined"
           density="comfortable"
         />
@@ -116,9 +121,11 @@ const submit = (): void => {
           v-model="form.status"
           label="Статус"
           :items="[
-            { title: 'Запланировано', value: 'backlog' },
-            { title: 'В работе', value: 'in_progress' },
-            { title: 'Готово', value: 'done' },
+            { title: 'Новая', value: 'Open' },
+            { title: 'В работе', value: 'Drafted' },
+            { title: 'Требует уточнений', value: 'RequiresClarification' },
+            { title: 'Готово к продолжению', value: 'Ready' },
+            { title: 'Завершена', value: 'Done' },
           ]"
           density="comfortable"
           variant="outlined"
@@ -127,10 +134,10 @@ const submit = (): void => {
           <v-select
             v-model="relationType"
             :items="[
-              { title: 'Подзадача', value: 'child' },
-              { title: 'Родитель', value: 'parent' },
+              { title: 'Дочерние', value: 'child' },
+              { title: 'Родительские', value: 'parent' },
             ]"
-            label="Тип связи"
+            label="Связи"
             density="comfortable"
             variant="outlined"
             class="flex-1-1"
@@ -152,7 +159,7 @@ const submit = (): void => {
         <v-textarea
           v-model="form.description"
           label="Описание"
-          placeholder="Добавьте детали, ограничения или критерии"
+          placeholder="Кратко опишите контекст и ожидания"
           rows="3"
           auto-grow
           variant="outlined"

@@ -6,7 +6,12 @@ import {
 import { DatabaseService } from '../database/database.service';
 
 export type TaskType = 'epic' | 'task' | 'subtask';
-export type TaskStatus = 'backlog' | 'in_progress' | 'done';
+export type TaskStatus =
+  | 'Open'
+  | 'Drafted'
+  | 'RequiresClarification'
+  | 'Ready'
+  | 'Done';
 
 export interface Task {
   id: number;
@@ -21,7 +26,13 @@ export interface Task {
 }
 
 const TASK_TYPES: TaskType[] = ['epic', 'task', 'subtask'];
-const TASK_STATUSES: TaskStatus[] = ['backlog', 'in_progress', 'done'];
+const TASK_STATUSES: TaskStatus[] = [
+  'Open',
+  'Drafted',
+  'RequiresClarification',
+  'Ready',
+  'Done',
+];
 
 @Injectable()
 export class TasksService {
@@ -42,7 +53,7 @@ export class TasksService {
     const type = this.parseType(payload.type);
     const title = this.parseTitle(payload.title);
     const description = this.parseDescription(payload.description);
-    const status = this.parseStatus(payload.status, 'backlog');
+    const status = this.parseStatus(payload.status, 'Open');
     const parentIds = this.parseIdArray(payload.parentIds);
     const childIds = this.parseIdArray(payload.childIds);
     await this.ensureIdsExist([...parentIds, ...childIds]);

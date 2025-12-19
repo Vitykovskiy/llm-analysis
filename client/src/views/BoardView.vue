@@ -3,7 +3,12 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import TaskCreateDialog from '../components/TaskCreateDialog.vue'
 
 type TaskType = 'epic' | 'task' | 'subtask'
-type TaskStatus = 'backlog' | 'in_progress' | 'done'
+type TaskStatus =
+  | 'Open'
+  | 'Drafted'
+  | 'RequiresClarification'
+  | 'Ready'
+  | 'Done'
 type Task = {
   id: number
   type: TaskType
@@ -19,9 +24,15 @@ type Task = {
 const apiBaseUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3000'
 
 const statusColumns: { id: TaskStatus; title: string; tone: string }[] = [
-  { id: 'backlog', title: 'Запланировано', tone: 'grey-lighten-4' },
-  { id: 'in_progress', title: 'В работе', tone: 'blue-grey-lighten-5' },
-  { id: 'done', title: 'Готово', tone: 'green-lighten-5' },
+  { id: 'Open', title: 'Новая', tone: 'grey-lighten-4' },
+  { id: 'Drafted', title: 'В работе', tone: 'blue-grey-lighten-5' },
+  {
+    id: 'RequiresClarification',
+    title: 'Требует уточнений',
+    tone: 'orange-lighten-4',
+  },
+  { id: 'Ready', title: 'Готово к продолжению', tone: 'light-blue-lighten-4' },
+  { id: 'Done', title: 'Завершена', tone: 'green-lighten-5' },
 ]
 
 const typeColors: Record<TaskType, string> = {
@@ -58,7 +69,7 @@ const editForm = reactive<{
   type: 'task',
   title: '',
   description: '',
-  status: 'backlog',
+  status: 'Open',
   parentIds: [],
   childIds: [],
 })
@@ -257,7 +268,7 @@ onMounted(async () => {
             </div>
             <div class="d-flex ga-2">
               <v-btn color="primary" prepend-icon="mdi-plus" :disabled="saving" @click="createDialog = true">
-                Новая задача
+                Создать задачу
               </v-btn>
               <v-btn icon="mdi-refresh" variant="tonal" color="primary" :disabled="loading || saving" @click="fetchTasks" />
             </div>
@@ -339,7 +350,7 @@ onMounted(async () => {
                 <v-divider />
                 <div class="pa-3 d-flex flex-column ga-2">
                   <div v-if="task.parents.length" class="d-flex align-center ga-2 flex-wrap">
-                    <span class="text-caption text-medium-emphasis">Родители:</span>
+                    <span class="text-caption text-medium-emphasis">Родительские:</span>
                     <v-chip
                       v-for="parent in task.parents"
                       :key="parent.id"
@@ -351,7 +362,7 @@ onMounted(async () => {
                     </v-chip>
                   </div>
                   <div v-if="task.children.length" class="d-flex align-center ga-2 flex-wrap">
-                    <span class="text-caption text-medium-emphasis">Подзадачи:</span>
+                    <span class="text-caption text-medium-emphasis">Дочерние:</span>
                     <v-chip
                       v-for="child in task.children"
                       :key="child.id"
@@ -394,7 +405,7 @@ onMounted(async () => {
             </div>
 
             <div v-if="!loading && tasksByStatus(column.id).length === 0" class="empty-column text-medium-emphasis">
-              Здесь пока нет задач.
+              Нет задач в этой колонке.
             </div>
           </div>
         </v-sheet>
@@ -426,9 +437,11 @@ onMounted(async () => {
             v-model="editForm.status"
             label="Статус"
             :items="[
-              { title: 'Запланировано', value: 'backlog' },
-              { title: 'В работе', value: 'in_progress' },
-              { title: 'Готово', value: 'done' },
+              { title: 'Новая', value: 'Open' },
+              { title: 'В работе', value: 'Drafted' },
+              { title: 'Требует уточнений', value: 'RequiresClarification' },
+              { title: 'Готово к продолжению', value: 'Ready' },
+              { title: 'Завершена', value: 'Done' },
             ]"
             density="comfortable"
             variant="outlined"
@@ -437,10 +450,10 @@ onMounted(async () => {
             <v-select
               v-model="relationTypeEdit"
               :items="[
-                { title: 'Подзадача', value: 'child' },
-                { title: 'Родитель', value: 'parent' },
+                { title: 'Дочерние', value: 'child' },
+                { title: 'Родительские', value: 'parent' },
               ]"
-              label="Тип связи"
+              label="Связи"
               density="comfortable"
               variant="outlined"
               class="flex-1-1"
