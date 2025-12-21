@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { RunnableSequence } from '@langchain/core/runnables';
 import { StringOutputParser } from '@langchain/core/output_parsers';
@@ -57,8 +57,8 @@ export class LangchainService {
   }
 
   /**
-   * Main entry point for chat interactions with task tools.
-   * Executes a simple tool-calling loop so the model can act on tasks.
+   * Главная точка входа для диалога с инструментами задач.
+   * Простая петля вызова инструментов, чтобы модель могла действовать по запросу.
    */
   async generateTaskAwareReply(input: string): Promise<string> {
     const toolModel = this.model.bindTools(this.taskTools);
@@ -122,7 +122,7 @@ export class LangchainService {
         if (!tool) {
           messages.push(
             new ToolMessage({
-              content: `Tool ${call.name} is not available`,
+              content: 'Инструмент ${call.name} недоступен',
               tool_call_id: toolCallId,
             }),
           );
@@ -140,7 +140,7 @@ export class LangchainService {
         } catch (err) {
           messages.push(
             new ToolMessage({
-              content: `Tool error: ${(err as Error).message}`,
+              content: 'Ошибка инструмента: ${(err as Error).message}',
               tool_call_id: toolCallId,
             }),
           );
@@ -148,7 +148,7 @@ export class LangchainService {
       }
     }
 
-    return 'Could not complete the request with available tools.';
+    return 'Не удалось выполнить запрос доступными инструментами.';
   }
 
   getTaskTools(): DynamicStructuredTool[] {
@@ -166,46 +166,50 @@ export class LangchainService {
     const typeEnum = z.enum(['epic', 'task', 'subtask']);
     const idArray = z
       .array(z.number().int().positive())
-      .describe('List of task ids');
+      .describe('Список идентификаторов задач');
     const vectorMetadata = z
       .record(z.string(), z.unknown())
       .optional()
-      .describe('Optional metadata object');
+      .describe('Необязательный объект метаданных');
     const addVectorSchema = z
       .object({
         content: z.string().min(1),
         metadata: vectorMetadata,
         id: z.string().min(1).optional(),
       })
-      .describe('Add a document to the vector store') as z.ZodTypeAny;
+      .describe('Добавить документ в векторное хранилище') as z.ZodTypeAny;
     const searchVectorSchema = z
       .object({
         query: z.string().min(1),
         limit: z.number().int().min(1).max(10).optional(),
       })
-      .describe('Search similar documents') as z.ZodTypeAny;
+      .describe('Поиск похожих документов') as z.ZodTypeAny;
     const getVectorSchema = z
       .object({
         id: z.string().min(1),
       })
-      .describe('Get a document by id') as z.ZodTypeAny;
+      .describe('Получить документ по id') as z.ZodTypeAny;
     const updateVectorSchema = z
       .object({
         id: z.string().min(1),
         content: z.string().min(1).optional(),
         metadata: vectorMetadata,
       })
-      .describe('Update a document content and/or metadata') as z.ZodTypeAny;
+      .describe(
+        'Обновить содержимое и/или метаданные документа',
+      ) as z.ZodTypeAny;
     const deleteVectorSchema = z
       .object({
         id: z.string().min(1),
       })
-      .describe('Delete a document by id') as z.ZodTypeAny;
+      .describe('Удалить документ по id') as z.ZodTypeAny;
     const listTasksSchema = z
       .object({
-        status: statusEnum.optional().describe('Optional status filter'),
+        status: statusEnum
+          .optional()
+          .describe('Необязательный фильтр по статусу'),
       })
-      .describe('List tasks input') as z.ZodTypeAny;
+      .describe('Параметры получения задач') as z.ZodTypeAny;
     const createTaskSchema = z
       .object({
         type: typeEnum,
@@ -215,7 +219,7 @@ export class LangchainService {
         parentIds: idArray.optional(),
         childIds: idArray.optional(),
       })
-      .describe('Create task input') as z.ZodTypeAny;
+      .describe('Параметры создания задачи') as z.ZodTypeAny;
     const updateTaskSchema = z
       .object({
         id: z.number().int().positive(),
@@ -226,18 +230,18 @@ export class LangchainService {
         parentIds: idArray.optional(),
         childIds: idArray.optional(),
       })
-      .describe('Update task input') as z.ZodTypeAny;
+      .describe('Параметры обновления задачи') as z.ZodTypeAny;
     const deleteTaskSchema = z
       .object({
         id: z.number().int().positive(),
       })
-      .describe('Delete task input') as z.ZodTypeAny;
+      .describe('Параметры удаления задачи') as z.ZodTypeAny;
 
     const tools: DynamicStructuredTool[] = [
       new DynamicStructuredTool<any>({
         name: 'list_tasks',
         description:
-          'List tasks with codes, statuses, types, and relations. Use it to understand current work items.',
+          'Список задач с кодами, статусами, типами и связями. Используй, чтобы понять текущие работы.',
         schema: listTasksSchema,
         func: async ({ status }) => {
           const tasks = await this.tasksService.list();
@@ -246,7 +250,7 @@ export class LangchainService {
             : tasks;
 
           if (!filtered.length) {
-            return 'No tasks found for the given filter.';
+            return 'Задач по фильтру не найдено.';
           }
 
           return filtered.map((task) => this.formatTask(task)).join('\n---\n');
@@ -255,7 +259,7 @@ export class LangchainService {
       new DynamicStructuredTool<any>({
         name: 'create_task',
         description:
-          'Create a new task or epic with optional parent/child links. Always provide a clear title and description.',
+          'Создать задачу или эпик с необязательными связями родитель/потомок. Обязательно укажи название и описание.',
         schema: createTaskSchema,
         func: async ({
           type,
@@ -273,33 +277,33 @@ export class LangchainService {
             parentIds,
             childIds,
           });
-          return `Created task:\n${this.formatTask(created)}`;
+          return `Создана задача:\n${this.formatTask(created)}`;
         },
       }) as unknown as DynamicStructuredTool,
       new DynamicStructuredTool<any>({
         name: 'update_task',
         description:
-          'Update an existing task fields or relations. Provide task id and only fields that should change.',
+          'Обновить поля или связи существующей задачи. Передай id и только те поля, что нужно изменить.',
         schema: updateTaskSchema,
         func: async ({ id, ...payload }) => {
           const updated = await this.tasksService.update(id, payload);
-          return `Updated task ${id}:\n${this.formatTask(updated)}`;
+          return `Обновлена задача ${id}:\n${this.formatTask(updated)}`;
         },
       }) as unknown as DynamicStructuredTool,
       new DynamicStructuredTool<any>({
         name: 'delete_task',
         description:
-          'Delete a task by id. Use after confirming the task should be removed from the board.',
+          'Удалить задачу по id. Используй после подтверждения, что её нужно убрать.',
         schema: deleteTaskSchema,
         func: async ({ id }) => {
           await this.tasksService.delete(id);
-          return `Deleted task ${id}`;
+          return `Удалена задача ${id}`;
         },
       }) as unknown as DynamicStructuredTool,
       new DynamicStructuredTool<any>({
         name: 'vector_add_document',
         description:
-          'Add a document to Chroma vector store. Include content and optional metadata/id.',
+          'Добавить документ в векторное хранилище Chroma. Передай текст и при необходимости метаданные/id.',
         schema: addVectorSchema,
         func: async ({ content, metadata, id }) => {
           const result = await this.vectorStoreService.addDocument({
@@ -307,37 +311,37 @@ export class LangchainService {
             metadata,
             id,
           });
-          return `Added vector document with id ${result.id}`;
+          return `Добавлен векторный документ с id ${result.id}`;
         },
       }) as unknown as DynamicStructuredTool,
       new DynamicStructuredTool<any>({
         name: 'vector_search',
         description:
-          'Search similar documents in the vector store. Provide query text and optional limit (1-10).',
+          'Поиск похожих документов в векторном хранилище. Передай запрос и необязательный лимит (1-10).',
         schema: searchVectorSchema,
         func: async ({ query, limit }) => {
           const results = await this.vectorStoreService.similaritySearch(
             query,
             limit ?? 3,
           );
-          if (!results.length) return 'No similar documents found.';
+          if (!results.length) return 'Похожие документы не найдены.';
           return JSON.stringify(results, null, 2);
         },
       }) as unknown as DynamicStructuredTool,
       new DynamicStructuredTool<any>({
         name: 'vector_get',
-        description: 'Fetch a vector document by id.',
+        description: 'Получить документ из векторного хранилища по id.',
         schema: getVectorSchema,
         func: async ({ id }) => {
           const doc = await this.vectorStoreService.getDocument(id);
-          if (!doc) return `Document ${id} not found.`;
+          if (!doc) return `Документ ${id} не найден.`;
           return JSON.stringify(doc, null, 2);
         },
       }) as unknown as DynamicStructuredTool,
       new DynamicStructuredTool<any>({
         name: 'vector_update',
         description:
-          'Update vector document content and/or metadata. Provide id and fields to change.',
+          'Обновить содержимое и/или метаданные документа в векторном хранилище. Передай id и поля для изменения.',
         schema: updateVectorSchema,
         func: async ({ id, content, metadata }) => {
           const result = await this.vectorStoreService.updateDocument({
@@ -345,16 +349,16 @@ export class LangchainService {
             content,
             metadata,
           });
-          return `Updated vector document ${result.id}`;
+          return `Обновлён векторный документ ${result.id}`;
         },
       }) as unknown as DynamicStructuredTool,
       new DynamicStructuredTool<any>({
         name: 'vector_delete',
-        description: 'Delete a vector document by id.',
+        description: 'Удалить документ из векторного хранилища по id.',
         schema: deleteVectorSchema,
         func: async ({ id }) => {
           await this.vectorStoreService.deleteDocument(id);
-          return `Deleted vector document ${id}`;
+          return `Удалён векторный документ ${id}`;
         },
       }) as unknown as DynamicStructuredTool,
     ];
@@ -370,16 +374,16 @@ export class LangchainService {
 
     const lines = [
       `${task.code} [${task.type}] (${task.status})`,
-      `Title: ${task.title}`,
-      `Description: ${task.description}`,
-      `Created: ${task.createdAt}`,
+      `Название: ${task.title}`,
+      `Описание: ${task.description}`,
+      `Создано: ${task.createdAt}`,
     ];
 
     if (parents.length) {
-      lines.push(`Parents: ${parents.join(', ')}`);
+      lines.push(`Родители: ${parents.join(', ')}`);
     }
     if (children.length) {
-      lines.push(`Children: ${children.join(', ')}`);
+      lines.push(`Дети: ${children.join(', ')}`);
     }
 
     return lines.join('\n');
