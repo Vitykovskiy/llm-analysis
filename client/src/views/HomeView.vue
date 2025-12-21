@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-
-type ChatMessage = {
-  id: number
-  userText: string
-  botReply: string
-  createdAt: string
-}
-
-const apiBaseUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3000'
+import {
+  clearMessages,
+  createMessage,
+  getMessages,
+  isDemoMode,
+  type ChatMessage,
+} from '../services/api'
 
 const messages = ref<ChatMessage[]>([])
 const text = ref('')
@@ -16,6 +14,7 @@ const loading = ref(false)
 const sending = ref(false)
 const clearing = ref(false)
 const error = ref('')
+const demoMode = isDemoMode
 
 const canSend = computed(
   () =>
@@ -37,11 +36,7 @@ const fetchMessages = async (): Promise<void> => {
   loading.value = true
   error.value = ''
   try {
-    const response = await fetch(`${apiBaseUrl}/messages`)
-    if (!response.ok) {
-      throw new Error('Не удалось загрузить историю чата')
-    }
-    messages.value = await response.json()
+    messages.value = await getMessages()
   } catch (err) {
     error.value = (err as Error).message
   } finally {
@@ -56,18 +51,7 @@ const sendMessage = async (): Promise<void> => {
   sending.value = true
   error.value = ''
   try {
-    const response = await fetch(`${apiBaseUrl}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: payload }),
-    })
-
-    if (!response.ok) {
-      const body = await response.text()
-      throw new Error(body || 'Не удалось отправить сообщение')
-    }
-
-    const savedMessage: ChatMessage = await response.json()
+    const savedMessage = await createMessage(payload)
     messages.value.push(savedMessage)
     text.value = ''
   } catch (err) {
@@ -83,15 +67,7 @@ const clearChat = async (): Promise<void> => {
   clearing.value = true
   error.value = ''
   try {
-    const response = await fetch(`${apiBaseUrl}/messages`, {
-      method: 'DELETE',
-    })
-
-    if (!response.ok) {
-      const body = await response.text()
-      throw new Error(body || 'Не удалось очистить историю чата')
-    }
-
+    await clearMessages()
     messages.value = []
   } catch (err) {
     error.value = (err as Error).message
@@ -115,36 +91,20 @@ onMounted(async () => {
               <div class="text-h5 font-weight-bold">Диалог с агентом</div>
             </div>
             <div class="d-flex ga-2 align-center">
-              <v-btn
-                icon="mdi-refresh"
-                variant="tonal"
-                color="primary"
-                :disabled="loading || sending || clearing"
-                @click="fetchMessages"
-              />
-              <v-btn
-                icon="mdi-delete"
-                aria-label="Очистить чат"
-                variant="tonal"
-                color="error"
-                :disabled="loading || sending || clearing"
-                :loading="clearing"
-                @click="clearChat"
-              />
+              <v-btn icon="mdi-refresh" variant="tonal" color="primary" :disabled="loading || sending || clearing"
+                @click="fetchMessages" />
+
             </div>
           </v-card-title>
 
           <v-divider />
 
           <v-card-text>
-            <v-alert
-              v-if="error"
-              type="error"
-              variant="tonal"
-              border="start"
-              class="mb-4"
-              density="comfortable"
-            >
+            <v-alert v-if="demoMode" type="info" variant="tonal" border="start" class="mb-4" density="comfortable">
+              Demo mode is ON. Data comes from client stubs.
+            </v-alert>
+
+            <v-alert v-if="error" type="error" variant="tonal" border="start" class="mb-4" density="comfortable">
               {{ error }}
             </v-alert>
 
@@ -155,7 +115,7 @@ onMounted(async () => {
 
             <div v-else class="chat-scroll d-flex flex-column ga-5">
               <div v-if="!messages.length" class="text-medium-emphasis text-body-2">
-                Сообщений пока нет.
+               Сообщений пока нет.
               </div>
 
               <div v-for="message in messages" :key="message.id" class="d-flex flex-column ga-2">
@@ -180,28 +140,12 @@ onMounted(async () => {
 
           <v-card-actions class="pa-4">
             <v-form class="w-100" @submit.prevent="sendMessage">
-              <v-textarea
-                v-model="text"
-                label="Ваше сообщение"
-                placeholder="Спросите что-нибудь у модели..."
-                :disabled="sending || clearing"
-                :loading="sending"
-                rows="2"
-                auto-grow
-                variant="outlined"
-                color="primary"
-                @keydown.enter.exact.prevent="sendMessage"
-              />
+              <v-textarea v-model="text" label="Ваше сообщение" placeholder="Спросите что-нибудь у модели..."
+                :disabled="sending || clearing" :loading="sending" rows="2" auto-grow variant="outlined" color="primary"
+                @keydown.enter.exact.prevent="sendMessage" />
               <div class="d-flex align-center justify-end ga-4">
-                <v-btn
-                  type="submit"
-                  color="primary"
-                  :disabled="!canSend"
-                  :loading="sending"
-                  prepend-icon="mdi-send"
-                >
-                  Отправить
-                </v-btn>
+                <v-btn type="submit" color="primary" :disabled="!canSend" :loading="sending" prepend-icon="mdi-send">
+                  Отправить</v-btn>
               </div>
             </v-form>
           </v-card-actions>

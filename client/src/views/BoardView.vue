@@ -1,26 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-
-type TaskType = 'epic' | 'task' | 'subtask'
-type TaskStatus =
-  | 'Открыта'
-  | 'Требует уточнения'
-  | 'Готова к продолжению'
-  | 'Декомпозирована'
-  | 'Выполнена'
-type Task = {
-  id: number
-  type: TaskType
-  title: string
-  description: string
-  status: TaskStatus
-  code: string
-  createdAt: string
-  parents: { id: number; code: string; title: string }[]
-  children: { id: number; code: string; title: string }[]
-}
-
-const apiBaseUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3000'
+import { getTasks, isDemoMode, type Task, type TaskStatus } from '../services/api'
 
 const statusColumns: { id: TaskStatus; title: string; tone: string }[] = [
   { id: 'Открыта', title: 'Открыта', tone: 'grey-lighten-4' },
@@ -34,17 +14,13 @@ const tasks = ref<Task[]>([])
 const loading = ref(false)
 const error = ref('')
 const expanded = ref<Set<number>>(new Set())
+const demoMode = isDemoMode
 
 const fetchTasks = async (): Promise<void> => {
   loading.value = true
   error.value = ''
   try {
-    const response = await fetch(`${apiBaseUrl}/tasks`)
-    if (!response.ok) {
-      const body = await response.text()
-      throw new Error(body || 'Не удалось загрузить задачи')
-    }
-    tasks.value = await response.json()
+    tasks.value = await getTasks()
   } catch (err) {
     error.value = (err as Error).message
   } finally {
@@ -79,14 +55,10 @@ const toggleExpanded = (taskId: number): void => {
           </v-card-title>
           <v-divider />
           <v-card-text class="d-flex flex-column ga-4">
-            <v-alert
-              v-if="error"
-              type="error"
-              variant="tonal"
-              border="start"
-              class="mb-2"
-              density="comfortable"
-            >
+            <v-alert v-if="demoMode" type="info" variant="tonal" border="start" class="mb-2" density="comfortable">
+              Demo mode is ON. Tasks are loaded from client stubs.
+            </v-alert>
+            <v-alert v-if="error" type="error" variant="tonal" border="start" class="mb-2" density="comfortable">
               {{ error }}
             </v-alert>
           </v-card-text>
@@ -102,7 +74,7 @@ const toggleExpanded = (taskId: number): void => {
               <div class="text-subtitle-1 font-weight-bold">{{ column.title }}</div>
             </div>
             <v-chip color="primary" variant="flat" size="small">
-              {{ tasks.filter((task) => task.status === column.id).length }}
+              {{tasks.filter((task) => task.status === column.id).length}}
             </v-chip>
           </div>
 
@@ -112,12 +84,8 @@ const toggleExpanded = (taskId: number): void => {
               <v-skeleton-loader type="paragraph" />
             </div>
 
-            <div
-              v-else
-              v-for="task in tasks.filter((item) => item.status === column.id)"
-              :key="task.id"
-              class="board-card"
-            >
+            <div v-else v-for="task in tasks.filter((item) => item.status === column.id)" :key="task.id"
+              class="board-card">
               <v-card elevation="2" class="h-100">
                 <v-card-item>
                   <div class="d-flex align-center justify-space-between ga-3">
@@ -125,12 +93,7 @@ const toggleExpanded = (taskId: number): void => {
                   </div>
                   <div class="text-body-1 mt-3 font-weight-medium">{{ task.title }}</div>
                   <div class="d-flex align-center ga-2 mt-2">
-                    <v-btn
-                      size="x-small"
-                      variant="tonal"
-                      color="primary"
-                      @click="toggleExpanded(task.id)"
-                    >
+                    <v-btn size="x-small" variant="tonal" color="primary" @click="toggleExpanded(task.id)">
                       {{ isExpanded(task.id) ? 'Скрыть описание' : 'Показать описание' }}
                     </v-btn>
                   </div>
@@ -144,10 +107,8 @@ const toggleExpanded = (taskId: number): void => {
               </v-card>
             </div>
 
-            <div
-              v-if="!loading && tasks.filter((item) => item.status === column.id).length === 0"
-              class="empty-column text-medium-emphasis"
-            >
+            <div v-if="!loading && tasks.filter((item) => item.status === column.id).length === 0"
+              class="empty-column text-medium-emphasis">
               В колонке пока нет задач.
             </div>
           </div>
