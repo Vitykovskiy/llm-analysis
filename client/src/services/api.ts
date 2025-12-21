@@ -1,7 +1,6 @@
 const apiBaseUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3000'
 
-export const isDemoMode =
-  String(import.meta.env.VITE_DEMO_MODE ?? '').toLowerCase() === 'true'
+export const isDemoMode = String(import.meta.env.VITE_DEMO_MODE ?? '').toLowerCase() === 'true'
 
 type WithId = { id: number }
 
@@ -31,8 +30,16 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 
 export const TASK_STATUS_META: { id: TaskStatus; title: string; tone: string }[] = [
   { id: 'open', title: TASK_STATUS_LABELS.open, tone: 'grey-lighten-4' },
-  { id: 'clarification_needed', title: TASK_STATUS_LABELS.clarification_needed, tone: 'orange-lighten-4' },
-  { id: 'ready_to_proceed', title: TASK_STATUS_LABELS.ready_to_proceed, tone: 'light-blue-lighten-4' },
+  {
+    id: 'clarification_needed',
+    title: TASK_STATUS_LABELS.clarification_needed,
+    tone: 'orange-lighten-4',
+  },
+  {
+    id: 'ready_to_proceed',
+    title: TASK_STATUS_LABELS.ready_to_proceed,
+    tone: 'light-blue-lighten-4',
+  },
   { id: 'decomposed', title: TASK_STATUS_LABELS.decomposed, tone: 'blue-grey-lighten-5' },
   { id: 'done', title: TASK_STATUS_LABELS.done, tone: 'green-lighten-5' },
 ]
@@ -55,11 +62,17 @@ export type SimilarEntry = {
   score: number
 }
 
-const delay = (ms = 160): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms))
+export type ResultFormat = 'markdown' | 'plantuml'
+export type ResultEntry = {
+  id: number
+  title: string
+  format: ResultFormat
+  content: string
+}
 
-const cloneArray = <T extends WithId>(data: T[]): T[] =>
-  data.map((item) => ({ ...item }))
+const delay = (ms = 160): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+const cloneArray = <T extends WithId>(data: T[]): T[] => data.map((item) => ({ ...item }))
 
 const cloneResults = (data: SimilarEntry[]): SimilarEntry[] =>
   data.map((item) => ({
@@ -110,7 +123,8 @@ let demoMessages: ChatMessage[] = [
   },
   {
     id: 6,
-    userText: '1. Только сегодня.\n2. По умолчанию 09:00–20:00, администратор может менять.\n3. Рубли, округление до целых, акций нет.',
+    userText:
+      '1. Только сегодня.\n2. По умолчанию 09:00–20:00, администратор может менять.\n3. Рубли, округление до целых, акций нет.',
     botReply: 'Кратко: требования полностью уточнены и согласованы.',
     createdAt: '2024-12-18T10:28:00.000Z',
   },
@@ -155,7 +169,8 @@ const demoTasks: Task[] = [
     id: 3,
     type: 'task',
     title: 'Модель оформления и обработки заказа',
-    description: 'Описание процесса создания заказа, передачи баристе, подтверждения, отмены и закрытия.',
+    description:
+      'Описание процесса создания заказа, передачи баристе, подтверждения, отмены и закрытия.',
     status: 'done',
     code: 'TASK-3',
     createdAt: '2024-12-18T09:20:00.000Z',
@@ -213,7 +228,8 @@ const demoTasks: Task[] = [
     id: 8,
     type: 'task',
     title: 'Структура меню',
-    description: 'Определение групп товаров, типов позиций (напитки, еда, мерч) и связей между ними.',
+    description:
+      'Определение групп товаров, типов позиций (напитки, еда, мерч) и связей между ними.',
     status: 'open',
     code: 'TASK-8',
     createdAt: '2024-12-18T10:10:00.000Z',
@@ -260,6 +276,77 @@ const demoSimilarResults: SimilarEntry[] = [
     content: 'Board items expose parent/child relations for quick drill-down.',
     metadata: { source: 'demo-notes.md', section: 'board' },
     score: 0.8874,
+  },
+]
+
+const demoResultEntries: ResultEntry[] = [
+  {
+    id: 1,
+    title: 'Диаграмма вариантов использования (PlantUML)',
+    format: 'plantuml',
+    content: `@startuml
+left to right direction
+
+actor "Пользователь" as User
+actor "Бариста" as Barista
+actor "Администратор" as Admin
+
+rectangle "Система заказа в кафетерии" {
+
+  usecase "Сформировать заказ" as UC_CreateOrder
+  usecase "Получать уведомления\\nо статусе заказа" as UC_Notify
+
+  usecase "Обработать заказ\\n(подтвердить / отклонить)" as UC_ProcessOrder
+  usecase "Завершить заказ" as UC_CloseOrder
+
+  usecase "Управлять меню" as UC_MenuAdmin
+}
+
+User --> UC_CreateOrder
+User --> UC_Notify
+
+Barista --> UC_ProcessOrder
+Barista --> UC_CloseOrder
+
+Admin --> UC_MenuAdmin
+
+@enduml `,
+  },
+  {
+    id: 2,
+    title: 'Пользовательские сценарии (Markdown)',
+    format: 'markdown',
+    content: `## Пользовательский сценарий UC-01: Формирование заказа
+
+**Актор:** Пользователь
+
+### Предусловия
+- пользователь подтверждён баристой;
+- меню доступно;
+- рабочие часы бара заданы.
+
+### Основной сценарий
+1. Пользователь открывает Telegram-бот.
+2. Пользователь просматривает меню.
+3. Пользователь выбирает позицию.
+4. Для напитка выбирает обязательный размер (S/M/L).
+5. Пользователь выбирает дополнительные опции (допы).
+6. Пользователь добавляет позицию в корзину.
+7. Пользователь повторяет шаги 3–6 при необходимости.
+8. Пользователь переходит в корзину.
+9. Пользователь нажимает кнопку «Сформировать заказ».
+10. Пользователь выбирает доступный слот времени.
+11. Система создаёт заказ со статусом «Создан».
+12. Система уведомляет баристу о новом заказе.
+
+### Альтернативные сценарии
+- **A1.** Пользователь не подтверждён — система предлагает отправить заявку на подтверждение.
+- **A2.** Выбранный слот недоступен — система предлагает выбрать другой слот.
+- **A3.** Позиция недоступна — система запрещает добавление в корзину.
+
+### Постусловия
+- заказ создан и ожидает обработки баристой.
+`,
   },
 ]
 
@@ -336,10 +423,7 @@ export const getTasks = async (): Promise<Task[]> => {
   return handleResponse<Task[]>(response, 'Failed to load tasks')
 }
 
-export const getSimilarMessages = async (
-  query: string,
-  limit: number,
-): Promise<SimilarEntry[]> => {
+export const getSimilarMessages = async (query: string, limit: number): Promise<SimilarEntry[]> => {
   if (isDemoMode) {
     await delay()
     const normalizedLimit = limit && limit > 0 ? limit : demoSimilarResults.length
@@ -353,4 +437,14 @@ export const getSimilarMessages = async (
 
   const response = await fetch(`${apiBaseUrl}/messages/similar?${params.toString()}`)
   return handleResponse<SimilarEntry[]>(response, 'Failed to search similar messages')
+}
+
+export const getResults = async (): Promise<ResultEntry[]> => {
+  if (isDemoMode) {
+    await delay()
+    return demoResultEntries.map((item) => ({ ...item }))
+  }
+
+  const response = await fetch(`${apiBaseUrl}/results`)
+  return handleResponse<ResultEntry[]>(response, 'Failed to load results')
 }

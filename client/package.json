@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
+    "marked": "^12.0.2",
+    "plantuml-encoder": "^1.3.0",
     "pinia": "^3.0.4",
     "sass": "^1.96.0",
     "vite-plugin-vuetify": "^2.1.2",
