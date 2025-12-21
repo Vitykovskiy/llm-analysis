@@ -30,21 +30,10 @@ const statusColumns: { id: TaskStatus; title: string; tone: string }[] = [
   { id: 'Выполнена', title: 'Выполнена', tone: 'green-lighten-5' },
 ]
 
-const typeColors: Record<TaskType, string> = {
-  epic: 'deep-purple-darken-2',
-  task: 'blue-darken-1',
-  subtask: 'brown-darken-1',
-}
-
-const typeTitles: Record<TaskType, string> = {
-  epic: 'Эпик',
-  task: 'Задача',
-  subtask: 'Подзадача',
-}
-
 const tasks = ref<Task[]>([])
 const loading = ref(false)
 const error = ref('')
+const expanded = ref<Set<number>>(new Set())
 
 const fetchTasks = async (): Promise<void> => {
   loading.value = true
@@ -66,6 +55,17 @@ const fetchTasks = async (): Promise<void> => {
 onMounted(async () => {
   await fetchTasks()
 })
+
+const isExpanded = (taskId: number): boolean => expanded.value.has(taskId)
+const toggleExpanded = (taskId: number): void => {
+  const next = new Set(expanded.value)
+  if (next.has(taskId)) {
+    next.delete(taskId)
+  } else {
+    next.add(taskId)
+  }
+  expanded.value = next
+}
 </script>
 
 <template>
@@ -121,48 +121,26 @@ onMounted(async () => {
               <v-card elevation="2" class="h-100">
                 <v-card-item>
                   <div class="d-flex align-center justify-space-between ga-3">
-                    <div class="d-flex align-center ga-2">
-                      <v-chip :color="typeColors[task.type]" variant="flat" size="small" class="text-white">
-                        {{ typeTitles[task.type] }}
-                      </v-chip>
-                      <v-chip color="grey-darken-1" size="small" variant="tonal">{{ task.code }}</v-chip>
-                    </div>
+                    <v-chip color="grey-darken-1" size="small" variant="tonal">{{ task.code }}</v-chip>
                   </div>
                   <div class="text-body-1 mt-3 font-weight-medium">{{ task.title }}</div>
-                  <div class="text-body-2 mt-1">{{ task.description }}</div>
+                  <div class="d-flex align-center ga-2 mt-2">
+                    <v-btn
+                      size="x-small"
+                      variant="tonal"
+                      color="primary"
+                      @click="toggleExpanded(task.id)"
+                    >
+                      {{ isExpanded(task.id) ? 'Скрыть описание' : 'Показать описание' }}
+                    </v-btn>
+                  </div>
+                  <v-expand-transition>
+                    <div v-if="isExpanded(task.id)" class="text-body-2 mt-2">
+                      {{ task.description }}
+                    </div>
+                  </v-expand-transition>
                 </v-card-item>
                 <v-divider />
-                <div class="pa-3 d-flex flex-column ga-2">
-                  <div v-if="task.parents.length" class="d-flex align-center ga-2 flex-wrap">
-                    <span class="text-caption text-medium-emphasis">Родители:</span>
-                    <v-chip
-                      v-for="parent in task.parents"
-                      :key="parent.id"
-                      size="x-small"
-                      color="grey-darken-1"
-                      variant="tonal"
-                    >
-                      {{ parent.code }}
-                    </v-chip>
-                  </div>
-                  <div v-if="task.children.length" class="d-flex align-center ga-2 flex-wrap">
-                    <span class="text-caption text-medium-emphasis">Дочерние:</span>
-                    <v-chip
-                      v-for="child in task.children"
-                      :key="child.id"
-                      size="x-small"
-                      color="grey-darken-1"
-                      variant="tonal"
-                    >
-                      {{ child.code }}
-                    </v-chip>
-                  </div>
-                </div>
-                <v-card-actions class="justify-start">
-                  <v-chip label size="small" color="primary" variant="tonal">
-                    {{ column.title }}
-                  </v-chip>
-                </v-card-actions>
               </v-card>
             </div>
 

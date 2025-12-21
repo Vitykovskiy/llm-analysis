@@ -11,17 +11,6 @@
           density="comfortable"
         />
         <v-select
-          v-model="form.type"
-          label="Тип"
-          :items="[
-            { title: 'Эпик', value: 'epic' },
-            { title: 'Задача', value: 'task' },
-            { title: 'Подзадача', value: 'subtask' },
-          ]"
-          density="comfortable"
-          variant="outlined"
-        />
-        <v-select
           v-model="form.status"
           label="Статус"
           :items="[
