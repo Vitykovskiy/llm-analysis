@@ -1,13 +1,100 @@
+<template>
+  <v-dialog v-model="open" max-width="520">
+    <v-card>
+      <v-card-title class="text-h6 font-weight-bold">Создание задачи</v-card-title>
+      <v-card-text class="d-flex flex-column ga-4">
+        <v-text-field
+          v-model="form.title"
+          label="Название"
+          placeholder="Например: настроить деплой, проработать требования"
+          variant="outlined"
+          density="comfortable"
+        />
+        <v-select
+          v-model="form.type"
+          label="Тип"
+          :items="[
+            { title: 'Эпик', value: 'epic' },
+            { title: 'Задача', value: 'task' },
+            { title: 'Подзадача', value: 'subtask' },
+          ]"
+          density="comfortable"
+          variant="outlined"
+        />
+        <v-select
+          v-model="form.status"
+          label="Статус"
+          :items="[
+            { title: 'Открыта', value: 'Открыта' },
+            { title: 'Требует уточнения', value: 'Требует уточнения' },
+            { title: 'Готова к продолжению', value: 'Готова к продолжению' },
+            { title: 'Декомпозирована', value: 'Декомпозирована' },
+            { title: 'Выполнена', value: 'Выполнена' },
+          ]"
+          density="comfortable"
+          variant="outlined"
+        />
+        <div class="d-flex flex-wrap ga-3">
+          <v-select
+            v-model="relationType"
+            :items="[
+              { title: 'Дочерние', value: 'child' },
+              { title: 'Родители', value: 'parent' },
+            ]"
+            label="Связи"
+            density="comfortable"
+            variant="outlined"
+            class="flex-1-1"
+          />
+          <v-combobox
+            v-model="relationTargets"
+            :items="taskOptions ?? []"
+            label="Связанные задачи"
+            multiple
+            item-title="title"
+            item-value="value"
+            chips
+            clearable
+            variant="outlined"
+            density="comfortable"
+            class="flex-2-1"
+          />
+        </div>
+        <v-textarea
+          v-model="form.description"
+          label="Описание"
+          placeholder="Кратко опишите цель и результат задачи"
+          rows="3"
+          auto-grow
+          variant="outlined"
+          density="comfortable"
+        />
+      </v-card-text>
+      <v-card-actions class="justify-end ga-2">
+        <v-btn variant="text" @click="open = false">Отмена</v-btn>
+        <v-btn
+          color="primary"
+          :loading="loading"
+          :disabled="!form.description.trim() || !form.title.trim()"
+          @click="submit"
+        >
+          Создать
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+</template>
+
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 
 export type TaskType = 'epic' | 'task' | 'subtask'
 export type TaskStatus =
-  | 'Open'
-  | 'Drafted'
-  | 'RequiresClarification'
-  | 'Ready'
-  | 'Done'
+  | 'Открыта'
+  | 'Требует уточнения'
+  | 'Готова к продолжению'
+  | 'Декомпозирована'
+  | 'Выполнена'
 
 const props = defineProps<{
   modelValue: boolean
@@ -39,7 +126,7 @@ const form = reactive<{
   childIds: any[]
 }>({
   type: 'task',
-  status: 'Open',
+  status: 'Открыта',
   title: '',
   description: '',
   parentIds: [],
@@ -69,7 +156,7 @@ watch(
   (isOpen) => {
     if (isOpen) {
       form.type = 'task'
-      form.status = 'Open'
+      form.status = 'Открыта'
       form.title = ''
       form.description = ''
       form.parentIds = []
@@ -94,97 +181,11 @@ const submit = (): void => {
 }
 </script>
 
-<template>
-  <v-dialog v-model="open" max-width="520">
-    <v-card>
-      <v-card-title class="text-h6 font-weight-bold">Создание задачи</v-card-title>
-      <v-card-text class="d-flex flex-column ga-4">
-        <v-text-field
-          v-model="form.title"
-          label="Название"
-          placeholder="Например: собрать требования, уточнить цели"
-          variant="outlined"
-          density="comfortable"
-        />
-        <v-select
-          v-model="form.type"
-          label="Тип"
-          :items="[
-            { title: 'Эпик', value: 'epic' },
-            { title: 'Задача', value: 'task' },
-            { title: 'Подзадача', value: 'subtask' },
-          ]"
-          density="comfortable"
-          variant="outlined"
-        />
-        <v-select
-          v-model="form.status"
-          label="Статус"
-          :items="[
-            { title: 'Новая', value: 'Open' },
-            { title: 'В работе', value: 'Drafted' },
-            { title: 'Требует уточнений', value: 'RequiresClarification' },
-            { title: 'Готово к продолжению', value: 'Ready' },
-            { title: 'Завершена', value: 'Done' },
-          ]"
-          density="comfortable"
-          variant="outlined"
-        />
-        <div class="d-flex flex-wrap ga-3">
-          <v-select
-            v-model="relationType"
-            :items="[
-              { title: 'Дочерние', value: 'child' },
-              { title: 'Родительские', value: 'parent' },
-            ]"
-            label="Связи"
-            density="comfortable"
-            variant="outlined"
-            class="flex-1-1"
-          />
-          <v-combobox
-            v-model="relationTargets"
-            :items="taskOptions ?? []"
-            label="Связанные задачи"
-            multiple
-            item-title="title"
-            item-value="value"
-            chips
-            clearable
-            variant="outlined"
-            density="comfortable"
-            class="flex-2-1"
-          />
-        </div>
-        <v-textarea
-          v-model="form.description"
-          label="Описание"
-          placeholder="Кратко опишите контекст и ожидания"
-          rows="3"
-          auto-grow
-          variant="outlined"
-          density="comfortable"
-        />
-      </v-card-text>
-      <v-card-actions class="justify-end ga-2">
-        <v-btn variant="text" @click="open = false">Отмена</v-btn>
-        <v-btn
-          color="primary"
-          :loading="loading"
-          :disabled="!form.description.trim() || !form.title.trim()"
-          @click="submit"
-        >
-          Создать
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
-</template>
-
 <style scoped>
 .flex-1-1 {
   flex: 1 1 180px;
 }
+
 .flex-2-1 {
   flex: 2 1 220px;
 }

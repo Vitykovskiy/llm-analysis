@@ -112,7 +112,7 @@ onMounted(async () => {
         <v-card elevation="3">
           <v-card-title class="d-flex align-center justify-space-between flex-wrap ga-4">
             <div>
-              <div class="text-h5 font-weight-bold">Первичный сбор информации</div>
+              <div class="text-h5 font-weight-bold">Диалог с агентом</div>
             </div>
             <div class="d-flex ga-2 align-center">
               <v-btn

@@ -10,11 +10,11 @@ import { Database, verbose } from 'sqlite3';
 
 const sqlite3 = verbose();
 type DbTaskStatus =
-  | 'Open'
-  | 'Drafted'
-  | 'RequiresClarification'
-  | 'Ready'
-  | 'Done';
+  | 'Открыта'
+  | 'Требует уточнения'
+  | 'Готова к продолжению'
+  | 'Декомпозирована'
+  | 'Выполнена';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
@@ -39,7 +39,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         type TEXT NOT NULL CHECK (type IN ('epic', 'task', 'subtask')),
         title TEXT NOT NULL,
         description TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('Open', 'Drafted', 'RequiresClarification', 'Ready', 'Done')),
+        status TEXT NOT NULL CHECK (status IN ('Открыта', 'Требует уточнения', 'Готова к продолжению', 'Декомпозирована', 'Выполнена')),
         code TEXT UNIQUE NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -97,14 +97,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'",
     );
     const expectedCheck =
-      "status IN ('Open', 'Drafted', 'RequiresClarification', 'Ready', 'Done')";
+      "status IN ('Открыта', 'Требует уточнения', 'Готова к продолжению', 'Декомпозирована', 'Выполнена')";
 
     if (row?.sql?.includes(expectedCheck)) {
       return;
     }
 
     this.logger.warn(
-      'Migrating tasks table to new status set (Open, Drafted, RequiresClarification, Ready, Done)',
+      'Migrating tasks table to new status set (Открыта, Требует уточнения, Готова к продолжению, Декомпозирована, Выполнена)',
     );
 
     await this.run('PRAGMA foreign_keys=off');
@@ -128,15 +128,20 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         title,
         description,
         CASE status
-          WHEN 'backlog' THEN 'Open'
-          WHEN 'in_progress' THEN 'Drafted'
-          WHEN 'done' THEN 'Done'
-          WHEN 'Open' THEN 'Open'
-          WHEN 'Drafted' THEN 'Drafted'
-          WHEN 'RequiresClarification' THEN 'RequiresClarification'
-          WHEN 'Ready' THEN 'Ready'
-          WHEN 'Done' THEN 'Done'
-          ELSE 'Open'
+          WHEN 'backlog' THEN 'Открыта'
+          WHEN 'in_progress' THEN 'Готова к продолжению'
+          WHEN 'done' THEN 'Выполнена'
+          WHEN 'Open' THEN 'Открыта'
+          WHEN 'Drafted' THEN 'Декомпозирована'
+          WHEN 'RequiresClarification' THEN 'Требует уточнения'
+          WHEN 'Ready' THEN 'Готова к продолжению'
+          WHEN 'Done' THEN 'Выполнена'
+          WHEN 'Открыта' THEN 'Открыта'
+          WHEN 'Декомпозирована' THEN 'Декомпозирована'
+          WHEN 'Требует уточнения' THEN 'Требует уточнения'
+          WHEN 'Готова к продолжению' THEN 'Готова к продолжению'
+          WHEN 'Выполнена' THEN 'Выполнена'
+          ELSE 'Открыта'
         END as status,
         code,
         created_at

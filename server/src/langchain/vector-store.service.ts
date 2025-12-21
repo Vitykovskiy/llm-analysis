@@ -95,7 +95,7 @@ export class VectorStoreService {
     });
 
     const store = await this.getStore();
-    await store.addDocuments([doc], [id]);
+    await store.addDocuments([doc], { ids: [id] });
     return { id };
   }
 
