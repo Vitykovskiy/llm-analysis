@@ -8,7 +8,8 @@ import { RouterView } from 'vue-router'
       <v-app-bar-title class="font-weight-bold">LLM Analysis</v-app-bar-title>
       <v-spacer />
       <v-btn to="/" variant="text" class="text-white" exact>Чат</v-btn>
-      <v-btn to="/board" variant="text" class="text-white">Задачи</v-btn>
+      <v-btn to="/board" variant="text" class="text-white">Доска</v-btn>
+      <v-btn to="/results" variant="text" class="text-white">Результаты</v-btn>
     </v-app-bar>
 
     <v-main class="bg-grey-lighten-4">
