@@ -56,9 +56,9 @@ const fetchResults = async (): Promise<void> => {
           <v-divider />
 
           <v-card-text class="d-flex flex-column ga-4">
-            <v-alert v-if="demoMode" type="info" variant="tonal" border="start" density="comfortable">
+            <!--             <v-alert v-if="demoMode" type="info" variant="tonal" border="start" density="comfortable">
               Demo mode is ON. Similar results are mocked on the client.
-            </v-alert>
+            </v-alert> -->
             <v-alert v-if="error" type="error" variant="tonal" border="start" density="comfortable">
               {{ error }}
             </v-alert>

@@ -1,14 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { getTasks, isDemoMode, type Task, type TaskStatus } from '../services/api'
+import { TASK_STATUS_META, getTasks, isDemoMode, type Task } from '../services/api'
 
-const statusColumns: { id: TaskStatus; title: string; tone: string }[] = [
-  { id: 'Открыта', title: 'Открыта', tone: 'grey-lighten-4' },
-  { id: 'Требует уточнения', title: 'Требует уточнения', tone: 'orange-lighten-4' },
-  { id: 'Готова к продолжению', title: 'Готова к продолжению', tone: 'light-blue-lighten-4' },
-  { id: 'Декомпозирована', title: 'Декомпозирована', tone: 'blue-grey-lighten-5' },
-  { id: 'Выполнена', title: 'Выполнена', tone: 'green-lighten-5' },
-]
+const statusColumns = TASK_STATUS_META
 
 const tasks = ref<Task[]>([])
 const loading = ref(false)
@@ -55,9 +49,9 @@ const toggleExpanded = (taskId: number): void => {
           </v-card-title>
           <v-divider />
           <v-card-text class="d-flex flex-column ga-4">
-            <v-alert v-if="demoMode" type="info" variant="tonal" border="start" class="mb-2" density="comfortable">
-              Demo mode is ON. Tasks are loaded from client stubs.
-            </v-alert>
+            <!--             <v-alert v-if="demoMode" type="info" variant="tonal" border="start" class="mb-2" density="comfortable">
+              Демо режим включен. Задачи подставлены из клиентских заглушек.
+            </v-alert> -->
             <v-alert v-if="error" type="error" variant="tonal" border="start" class="mb-2" density="comfortable">
               {{ error }}
             </v-alert>
@@ -109,7 +103,7 @@ const toggleExpanded = (taskId: number): void => {
 
             <div v-if="!loading && tasks.filter((item) => item.status === column.id).length === 0"
               class="empty-column text-medium-emphasis">
-              В колонке пока нет задач.
+              Нет задач в этом статусе.
             </div>
           </div>
         </v-sheet>

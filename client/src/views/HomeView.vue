@@ -100,9 +100,9 @@ onMounted(async () => {
           <v-divider />
 
           <v-card-text>
-            <v-alert v-if="demoMode" type="info" variant="tonal" border="start" class="mb-4" density="comfortable">
+            <!--             <v-alert v-if="demoMode" type="info" variant="tonal" border="start" class="mb-4" density="comfortable">
               Demo mode is ON. Data comes from client stubs.
-            </v-alert>
+            </v-alert> -->
 
             <v-alert v-if="error" type="error" variant="tonal" border="start" class="mb-4" density="comfortable">
               {{ error }}
@@ -115,7 +115,7 @@ onMounted(async () => {
 
             <div v-else class="chat-scroll d-flex flex-column ga-5">
               <div v-if="!messages.length" class="text-medium-emphasis text-body-2">
-               Сообщений пока нет.
+                Сообщений пока нет.
               </div>
 
               <div v-for="message in messages" :key="message.id" class="d-flex flex-column ga-2">

@@ -1,72 +1,30 @@
 <template>
   <v-dialog v-model="open" max-width="520">
     <v-card>
-      <v-card-title class="text-h6 font-weight-bold">Создание задачи</v-card-title>
+      <v-card-title class="text-h6 font-weight-bold">Создать задачу</v-card-title>
       <v-card-text class="d-flex flex-column ga-4">
-        <v-text-field
-          v-model="form.title"
-          label="Название"
-          placeholder="Например: настроить деплой, проработать требования"
-          variant="outlined"
-          density="comfortable"
-        />
-        <v-select
-          v-model="form.status"
-          label="Статус"
-          :items="[
-            { title: 'Открыта', value: 'Открыта' },
-            { title: 'Требует уточнения', value: 'Требует уточнения' },
-            { title: 'Готова к продолжению', value: 'Готова к продолжению' },
-            { title: 'Декомпозирована', value: 'Декомпозирована' },
-            { title: 'Выполнена', value: 'Выполнена' },
-          ]"
-          density="comfortable"
-          variant="outlined"
-        />
+        <v-text-field v-model="form.title" label="Название"
+          placeholder="Например: Почистить карточки задач или Добавить скелетоны" variant="outlined"
+          density="comfortable" />
+        <v-select v-model="form.status" label="Статус" :items="statusItems" item-title="title" item-value="value"
+          density="comfortable" variant="outlined" />
         <div class="d-flex flex-wrap ga-3">
-          <v-select
-            v-model="relationType"
-            :items="[
-              { title: 'Дочерние', value: 'child' },
-              { title: 'Родители', value: 'parent' },
-            ]"
-            label="Связи"
-            density="comfortable"
-            variant="outlined"
-            class="flex-1-1"
-          />
-          <v-combobox
-            v-model="relationTargets"
-            :items="taskOptions ?? []"
-            label="Связанные задачи"
-            multiple
-            item-title="title"
-            item-value="value"
-            chips
-            clearable
-            variant="outlined"
-            density="comfortable"
-            class="flex-2-1"
-          />
+          <v-select v-model="relationType" :items="[
+            { title: 'Дочерняя', value: 'child' },
+            { title: 'Родительская', value: 'parent' },
+          ]" label="Тип связи" density="comfortable" variant="outlined" class="flex-1-1" />
+          <v-combobox v-model="relationTargets" :items="taskOptions ?? []" label="Связанные задачи" multiple
+            item-title="title" item-value="value" chips clearable variant="outlined" density="comfortable"
+            class="flex-2-1" />
         </div>
-        <v-textarea
-          v-model="form.description"
-          label="Описание"
-          placeholder="Кратко опишите цель и результат задачи"
-          rows="3"
-          auto-grow
-          variant="outlined"
-          density="comfortable"
-        />
+        <v-textarea v-model="form.description" label="Описание"
+          placeholder="Коротко сформулируйте задачу и критерии готовности" rows="3" auto-grow variant="outlined"
+          density="comfortable" />
       </v-card-text>
       <v-card-actions class="justify-end ga-2">
         <v-btn variant="text" @click="open = false">Отмена</v-btn>
-        <v-btn
-          color="primary"
-          :loading="loading"
-          :disabled="!form.description.trim() || !form.title.trim()"
-          @click="submit"
-        >
+        <v-btn color="primary" :loading="loading" :disabled="!form.description.trim() || !form.title.trim()"
+          @click="submit">
           Создать
         </v-btn>
       </v-card-actions>
@@ -76,14 +34,11 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-
-export type TaskType = 'epic' | 'task' | 'subtask'
-export type TaskStatus =
-  | 'Открыта'
-  | 'Требует уточнения'
-  | 'Готова к продолжению'
-  | 'Декомпозирована'
-  | 'Выполнена'
+import {
+  TASK_STATUS_META,
+  type TaskStatus,
+  type TaskType,
+} from '../services/api'
 
 const props = defineProps<{
   modelValue: boolean
@@ -106,6 +61,11 @@ const emit = defineEmits<{
   ): void
 }>()
 
+const statusItems = TASK_STATUS_META.map((item) => ({
+  title: item.title,
+  value: item.id,
+}))
+
 const form = reactive<{
   type: TaskType
   status: TaskStatus
@@ -115,7 +75,7 @@ const form = reactive<{
   childIds: any[]
 }>({
   type: 'task',
-  status: 'Открыта',
+  status: statusItems[0].value,
   title: '',
   description: '',
   parentIds: [],
@@ -145,7 +105,7 @@ watch(
   (isOpen) => {
     if (isOpen) {
       form.type = 'task'
-      form.status = 'Открыта'
+      form.status = statusItems[0].value
       form.title = ''
       form.description = ''
       form.parentIds = []
