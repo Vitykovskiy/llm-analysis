@@ -9,6 +9,37 @@ import {
 import { Database, verbose } from 'sqlite3';
 
 const sqlite3 = verbose();
+
+export type ArtifactKind = 'text' | 'diagram';
+export type ArtifactCategory =
+  | 'use_case_diagram'
+  | 'er_diagram'
+  | 'entity_diagram'
+  | 'user_scenario'
+  | 'functional_requirement'
+  | 'non_functional_requirement'
+  | 'acceptance_criteria'
+  | 'USE_CASE_DIAGRAM'
+  | 'ENTITY_DIAGRAM'
+  | 'USER_SCENARIO'
+  | 'FUNCTIONAL_REQUIREMENTS'
+  | 'NON_FUNCTIONAL_REQUIREMENTS'
+  | 'ACCEPTANCE_CRITERIA';
+export type ArtifactFormat = 'markdown' | 'plantuml' | 'text';
+export type ArtifactSourceType = 'task' | 'message' | 'manual';
+
+export interface ArtifactSnapshot {
+  artifactId: number;
+  title: string;
+  kind: ArtifactKind;
+  category: ArtifactCategory;
+  version: number;
+  format: ArtifactFormat;
+  content: string;
+  renderUrl?: string | null;
+  createdAt: string;
+}
+
 type DbTaskStatus =
   | 'Открыта'
   | 'Требует уточнения'
@@ -25,6 +56,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     this.ensureDirectory();
     this.db = new sqlite3.Database(this.dbFile);
+    await this.run('PRAGMA foreign_keys = ON');
     await this.run(`
       CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,6 +88,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     ).catch(() => undefined);
     await this.ensureTaskStatusConstraint();
     await this.ensureTaskCodeColumn();
+    await this.ensureArtifactSchema();
     this.logger.log(`SQLite ready at ${this.dbFile}`);
   }
 
@@ -151,6 +184,68 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     await this.run('PRAGMA foreign_keys=on');
     await this.run(
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_code ON tasks(code)',
+    );
+  }
+
+  private async ensureArtifactSchema(): Promise<void> {
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS artifacts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('text', 'diagram')),
+        category TEXT NOT NULL CHECK (category IN ('use_case_diagram', 'er_diagram', 'entity_diagram', 'user_scenario', 'functional_requirement', 'non_functional_requirement', 'acceptance_criteria')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS artifact_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        artifact_id INTEGER NOT NULL,
+        version INTEGER NOT NULL,
+        format TEXT NOT NULL CHECK (format IN ('markdown', 'plantuml', 'text')),
+        content TEXT NOT NULL,
+        render_url TEXT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE CASCADE,
+        UNIQUE(artifact_id, version)
+      )
+    `);
+
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS artifact_sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        artifact_id INTEGER NOT NULL,
+        source_type TEXT NOT NULL CHECK (source_type IN ('task', 'message', 'manual')),
+        source_id INTEGER,
+        description TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE CASCADE
+      )
+    `);
+
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS artifact_exports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        artifact_version_id INTEGER NOT NULL,
+        format TEXT NOT NULL CHECK (format IN ('markdown', 'docx', 'png', 'plantuml')),
+        content TEXT,
+        location TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (artifact_version_id) REFERENCES artifact_versions(id) ON DELETE CASCADE,
+        CHECK (content IS NOT NULL OR location IS NOT NULL)
+      )
+    `);
+
+    await this.run(
+      'CREATE INDEX IF NOT EXISTS idx_artifact_versions_artifact_id ON artifact_versions(artifact_id)',
+    );
+    await this.run(
+      'CREATE INDEX IF NOT EXISTS idx_artifact_sources_artifact_id ON artifact_sources(artifact_id)',
+    );
+    await this.run(
+      'CREATE INDEX IF NOT EXISTS idx_artifact_exports_version_id ON artifact_exports(artifact_version_id)',
     );
   }
 
@@ -555,6 +650,355 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       `SELECT id, code, title FROM tasks WHERE id IN (${placeholders})`,
       ids,
     );
+  }
+
+  async saveArtifactWithVersion(input: {
+    artifactId?: number;
+    title: string;
+    kind: ArtifactKind;
+    category: ArtifactCategory;
+    format: ArtifactFormat;
+    content: string;
+    renderUrl?: string | null;
+    note?: string | null;
+    sourceTaskIds?: number[];
+    sourceMessageIds?: number[];
+  }): Promise<ArtifactSnapshot> {
+    const trimmedContent = input.content?.trim();
+    const title = input.title?.trim();
+
+    if (!trimmedContent) {
+      throw new Error('Artifact content is required');
+    }
+
+    if (!title) {
+      throw new Error('Artifact title is required');
+    }
+
+    const normalizedCategory = this.normalizeCategory(input.category);
+
+    const artifactId = await this.upsertArtifactRecord({
+      id: input.artifactId,
+      title,
+      kind: input.kind,
+      category: normalizedCategory,
+    });
+
+    const nextVersion = await this.get<{ next: number }>(
+      'SELECT COALESCE(MAX(version), 0) + 1 as next FROM artifact_versions WHERE artifact_id = ?',
+      [artifactId],
+    );
+
+    await this.run(
+      `INSERT INTO artifact_versions (artifact_id, version, format, content, render_url, notes)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        artifactId,
+        nextVersion?.next ?? 1,
+        input.format,
+        trimmedContent,
+        input.renderUrl ?? null,
+        input.note ?? null,
+      ],
+    );
+
+    await this.attachArtifactSources(
+      artifactId,
+      input.sourceTaskIds,
+      input.sourceMessageIds,
+    );
+
+    const snapshot = await this.getLatestArtifactSnapshot(artifactId);
+    if (!snapshot) {
+      throw new Error('Failed to read saved artifact');
+    }
+
+    return snapshot;
+  }
+
+  async addArtifactExport(input: {
+    versionId: number;
+    format: 'markdown' | 'docx' | 'png' | 'plantuml';
+    content?: string;
+    location?: string;
+  }): Promise<{ id: number }> {
+    const hasContent = Boolean(input.content?.trim());
+    const hasLocation = Boolean(input.location?.trim());
+
+    if (!hasContent && !hasLocation) {
+      throw new Error('Export must have content or a storage location');
+    }
+
+    const version = await this.get<{ id: number }>(
+      'SELECT id FROM artifact_versions WHERE id = ?',
+      [input.versionId],
+    );
+
+    if (!version) {
+      throw new Error(`Artifact version ${input.versionId} not found`);
+    }
+
+    await this.run(
+      `INSERT INTO artifact_exports (artifact_version_id, format, content, location)
+       VALUES (?, ?, ?, ?)`,
+      [
+        input.versionId,
+        input.format,
+        hasContent ? input.content!.trim() : null,
+        hasLocation ? input.location!.trim() : null,
+      ],
+    );
+
+    const row = await this.get<{ id: number }>(
+      'SELECT id FROM artifact_exports WHERE id = last_insert_rowid()',
+    );
+
+    if (!row) {
+      throw new Error('Failed to create artifact export');
+    }
+
+    return row;
+  }
+
+  async listLatestArtifacts(): Promise<ArtifactSnapshot[]> {
+    const rows = await this.all<{
+      artifactId: number;
+      title: string;
+      kind: ArtifactKind;
+      category: string;
+      version: number;
+      format: ArtifactFormat;
+      content: string;
+      renderUrl: string | null;
+      createdAt: string;
+    }>(
+      `
+      SELECT
+        a.id as artifactId,
+        a.title as title,
+        a.kind as kind,
+        a.category as category,
+        v.version as version,
+        v.format as format,
+        v.content as content,
+        v.render_url as renderUrl,
+        v.created_at as createdAt
+      FROM artifacts a
+      INNER JOIN artifact_versions v ON v.id = (
+        SELECT v2.id
+        FROM artifact_versions v2
+        WHERE v2.artifact_id = a.id
+        ORDER BY v2.version DESC, v2.created_at DESC
+        LIMIT 1
+      )
+      ORDER BY v.created_at DESC, a.id DESC
+      `,
+    );
+
+    return rows.map((row) => ({
+      artifactId: row.artifactId,
+      title: row.title,
+      kind: row.kind,
+      category: this.toExternalCategory(row.category),
+      version: row.version,
+      format: row.format,
+      content: row.content,
+      renderUrl: row.renderUrl,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  private normalizeCategory(category: ArtifactCategory): ArtifactCategory {
+    const map: Record<string, ArtifactCategory> = {
+      use_case_diagram: 'use_case_diagram',
+      USE_CASE_DIAGRAM: 'use_case_diagram',
+      er_diagram: 'er_diagram',
+      entity_diagram: 'er_diagram',
+      ENTITY_DIAGRAM: 'er_diagram',
+      user_scenario: 'user_scenario',
+      USER_SCENARIO: 'user_scenario',
+      functional_requirement: 'functional_requirement',
+      FUNCTIONAL_REQUIREMENTS: 'functional_requirement',
+      non_functional_requirement: 'non_functional_requirement',
+      NON_FUNCTIONAL_REQUIREMENTS: 'non_functional_requirement',
+      acceptance_criteria: 'acceptance_criteria',
+      ACCEPTANCE_CRITERIA: 'acceptance_criteria',
+    };
+
+    const normalized = map[category];
+    if (!normalized) {
+      throw new Error(`Unsupported artifact category: ${category}`);
+    }
+    return normalized;
+  }
+
+  private toExternalCategory(category: string): ArtifactCategory {
+    const map: Record<string, ArtifactCategory> = {
+      use_case_diagram: 'USE_CASE_DIAGRAM',
+      er_diagram: 'ENTITY_DIAGRAM',
+      entity_diagram: 'ENTITY_DIAGRAM',
+      user_scenario: 'USER_SCENARIO',
+      functional_requirement: 'FUNCTIONAL_REQUIREMENTS',
+      non_functional_requirement: 'NON_FUNCTIONAL_REQUIREMENTS',
+      acceptance_criteria: 'ACCEPTANCE_CRITERIA',
+    };
+    return (map[category] as ArtifactCategory) ?? (category as ArtifactCategory);
+  }
+
+  private async upsertArtifactRecord(input: {
+    id?: number;
+    title: string;
+    kind: ArtifactKind;
+    category: ArtifactCategory;
+  }): Promise<number> {
+    if (input.id) {
+      const existing = await this.get<{ id: number }>(
+        'SELECT id FROM artifacts WHERE id = ?',
+        [input.id],
+      );
+
+      if (!existing) {
+        throw new Error(`Artifact ${input.id} not found`);
+      }
+
+      await this.run(
+        'UPDATE artifacts SET title = ?, kind = ?, category = ? WHERE id = ?',
+        [input.title, input.kind, input.category, input.id],
+      );
+      return input.id;
+    }
+
+    await this.run(
+      'INSERT INTO artifacts (title, kind, category) VALUES (?, ?, ?)',
+      [input.title, input.kind, input.category],
+    );
+
+    const row = await this.get<{ id: number }>(
+      'SELECT id FROM artifacts WHERE id = last_insert_rowid()',
+    );
+
+    if (!row) {
+      throw new Error('Failed to create artifact record');
+    }
+
+    return row.id;
+  }
+
+  private async attachArtifactSources(
+    artifactId: number,
+    taskIds?: number[],
+    messageIds?: number[],
+  ): Promise<void> {
+    const uniqueTasks = Array.from(
+      new Set(
+        (taskIds ?? []).filter(
+          (taskId) => Number.isFinite(taskId) && Number(taskId) > 0,
+        ),
+      ),
+    ) as number[];
+    const uniqueMessages = Array.from(
+      new Set(
+        (messageIds ?? []).filter(
+          (messageId) => Number.isFinite(messageId) && Number(messageId) > 0,
+        ),
+      ),
+    ) as number[];
+
+    if (uniqueTasks.length) {
+      const existing = await this.getTasksByIds(uniqueTasks);
+      const missing = uniqueTasks.filter(
+        (taskId) => !existing.find((item) => item.id === taskId),
+      );
+      if (missing.length) {
+        throw new Error(
+          `Tasks not found for ids: ${missing.join(', ')}`,
+        );
+      }
+
+      for (const taskId of uniqueTasks) {
+        await this.run(
+          `INSERT OR IGNORE INTO artifact_sources (artifact_id, source_type, source_id, description)
+           VALUES (?, 'task', ?, NULL)`,
+          [artifactId, taskId],
+        );
+      }
+    }
+
+    for (const messageId of uniqueMessages) {
+      await this.run(
+        `INSERT OR IGNORE INTO artifact_sources (artifact_id, source_type, source_id, description)
+         VALUES (?, 'message', ?, NULL)`,
+        [artifactId, messageId],
+      );
+    }
+
+    if (!uniqueTasks.length && !uniqueMessages.length) {
+      const existingSources = await this.get<{ count: number }>(
+        'SELECT COUNT(*) as count FROM artifact_sources WHERE artifact_id = ?',
+        [artifactId],
+      );
+
+      if (!existingSources?.count) {
+        await this.run(
+          `INSERT INTO artifact_sources (artifact_id, source_type, source_id, description)
+           VALUES (?, 'manual', NULL, 'Stored without explicit source reference')`,
+          [artifactId],
+        );
+      }
+    }
+  }
+
+  private async getLatestArtifactSnapshot(
+    artifactId: number,
+  ): Promise<ArtifactSnapshot | undefined> {
+    const row = await this.get<{
+      artifactId: number;
+      title: string;
+      kind: ArtifactKind;
+      category: string;
+      version: number;
+      format: ArtifactFormat;
+      content: string;
+      renderUrl: string | null;
+      createdAt: string;
+    }>(
+      `
+      SELECT
+        a.id as artifactId,
+        a.title as title,
+        a.kind as kind,
+        a.category as category,
+        v.version as version,
+        v.format as format,
+        v.content as content,
+        v.render_url as renderUrl,
+        v.created_at as createdAt
+      FROM artifacts a
+      INNER JOIN artifact_versions v ON v.id = (
+        SELECT v2.id
+        FROM artifact_versions v2
+        WHERE v2.artifact_id = a.id
+        ORDER BY v2.version DESC, v2.created_at DESC
+        LIMIT 1
+      )
+      WHERE a.id = ?
+      `,
+      [artifactId],
+    );
+
+    if (!row) return undefined;
+
+    return {
+      artifactId: row.artifactId,
+      title: row.title,
+      kind: row.kind,
+      category: this.toExternalCategory(row.category),
+      version: row.version,
+      format: row.format,
+      content: row.content,
+      renderUrl: row.renderUrl,
+      createdAt: row.createdAt,
+    };
   }
 
   async deleteTask(id: number): Promise<void> {
